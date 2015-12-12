@@ -1,0 +1,1182 @@
+#include<iostream>
+#include<stdlib.h> 
+#include<stdio.h> 
+#include<time.h> 
+
+using namespace std;
+//global variables
+	int D[24]={700,750,850,950,1000,1100,1150,1200,1300,1400,1450,1500,1400,1300,1200,
+				1050,1000,1100,1200,1400,1300,1100,900,800};
+
+	int genpeak[8]={6,5,7,8,9,4,3,10};
+
+	int Pmax[10]={455,455,130,130,162,80,85,55,55,55};//input of power output limits
+	int Pmin[10]={150,150,20,20,25,20,25,10,10,10};
+	int Preduation[10]={8,8,-5,-5,-6,-3,-3,-1,-1,-1};
+	int Minup[10]={8,8,5,5,6,3,3,1,1,1};
+	int Mindown[10]={8,8,5,5,6,3,3,1,1,1};
+	double A[10]={1000,970,700,680,450,370,480,660,665,670};
+	double B[10]={16.19,17.26,16.6,16.5,19.7,22.26,27.74,25.92,27.27,27.79};
+	double R[10]={0.00048,0.00031,0.002,0.00211,0.00398,0.00712,0.00079,0.00413,0.00222,0.00173};
+	double Hstart[10]={4500,5000,550,560,900,170,260,30,30,30};
+	double Cstart[10]={9000,10000,1100,1120,1800,340,520,60,60,60};
+	int coldstarthr[10]={5,5,4,4,4,2,2,0,0,0};
+	int Unit=10;//number of units
+	int NumberofBaseUnit=2;//number of base units
+	int N=10,T=24;
+	//CRO Test 
+	double buffer=0; 
+    //double InitialKE=100;
+    double KElossrate=0.5, Molecoll=0.001;
+    //int alpha=500;
+	//double beta=0.0005;
+	int InitialPopulation=5;
+    //int Iterations=2000;
+	
+	double GlobalMinimum;
+	double GlobalMinResult[24][10]={0};
+	int GlobalStatus[24][10];
+	int GlobalSequence[8];
+	double GlobalFuel,GlobalStart;
+
+class generator
+{
+public:
+	int Pout;
+	int Pmax;
+	int Pmin;//active power output; max&min power limitation
+	int minup;
+	int mindown;//minimum up and down time
+	//double rampup;
+	//double rampdown;//ramp up and down rate
+	//double startcost;
+	double hotstart;
+	double coldstart;
+	int coldstarthour;
+	//double downcost;//start up and shut down cost
+	//int opstatus;//operation status, 0 for off, 1 for on
+	int initials;//initial status
+	int duration;//already on or off time duration
+	double a,b,r;//economic coeifficients
+};
+
+class Molecule
+{
+public:
+	int Sequence[8];
+	//int NumofHit;//NG-4
+	//int MinNumofHit;//NG-3
+	double KE;//NG-1
+	int PE;//NG-2
+};
+
+int Sump(generator* gen, int n)//double calcTotalPower
+{
+	int sump=0;
+	for (int q=0;q<n;q++)
+	{
+		sump=sump+gen[q].Pout;
+	}
+
+	return sump;
+}
+
+void Genstatusset1(int genseq[], int n, int genstatus[][10], int t, generator gen[], int m, int D[], int t1,int BaseUnit)
+{
+	//base unit preset to 1
+	for (int i=0;i<t;i++)
+	{
+		for (int j=0;j<BaseUnit;j++)
+		{
+			genstatus[i][j]=1;
+		}
+	}
+
+	//peak preset
+	for (int k=0;k<n;k++)
+	{
+		for (int i=1;i<t-1;i++)
+		{
+			double sum=0;
+			for (int a=0;a<m;a++)
+			{
+				if (genstatus[i][a]==1)
+				{
+					sum=sum+gen[a].Pmax;
+				}
+			}
+			if ((D[i]>D[i-1])&&(D[i]>D[i+1])&&(sum<D[i]*1.1))
+			{
+				genstatus[i][genpeak[k]-1]=1;
+				int temp=rand()%gen[genpeak[k]-1].minup;
+				for (int j=i-temp;j<i-temp+gen[genpeak[k]-1].minup;j++)
+				{
+					genstatus[j][genpeak[k]-1]=1;
+				}
+			}
+		}
+	}
+	//reserve preset
+	for (int k=0;k<n;k++)
+	{
+		for (int i=1;i<t-1;i++)
+		{
+			double sum=0;
+			for (int a=0;a<m;a++)
+			{
+				if (genstatus[i][a]==1)
+				{
+					sum=sum+gen[a].Pmax;
+				}
+			}
+			if (sum<D[i]*1.1)
+			{
+				genstatus[i][genseq[k]-1]=1;
+			}
+		}
+	}
+	
+	//set other 0(not preset) positions
+	for (int k=0;k<n;k++)
+	{
+		int duration=gen[genseq[k]-1].duration;
+		for (int i=0;i<t;i++)
+		{
+			//if the status has been preset
+			if (genstatus[i][genseq[k]-1]==1)
+			{
+				if (duration>0)
+				{
+					duration=duration+1;
+				}
+				else
+				{
+					duration=1;
+				}
+			}
+			//no preset to 1
+			else //if (genstatus[i][genseq[k]-1]==0)
+			{
+				// if MUT/MDT not satisfied
+				if ((duration>0)&&(duration<gen[genseq[k]-1].minup))
+				{
+					genstatus[i][genseq[k]-1]=1;
+					duration=duration+1;
+				}				
+				else if ((duration>0)&&(duration>=gen[genseq[k]-1].minup))
+				{
+					int tem=0;
+					if ((i+gen[genseq[k]-1].mindown)<T)
+					{
+						for (int j=i;j<i+gen[genseq[k]-1].mindown;j++)
+						{
+							tem=tem+genstatus[j][genseq[k]-1];
+						}
+						if (tem!=0)
+						{
+							genstatus[i][genseq[k]-1]=1;
+							duration=duration+1;
+						}
+						else//tem==0
+						{
+							duration=-1;
+						}
+					}
+					else//current time+MDT>=T
+					{
+						genstatus[i][genseq[k]-1]=0;
+						duration=-1;
+					}
+				}
+				else //(duration<0) no matter <or> MDT//((duration<0)&&((-duration)<gen[genseq[k]-1].minup))
+				{
+					genstatus[i][genseq[k]-1]=0;
+					duration=duration-1;
+				}
+			}
+		}
+	}
+}
+
+void Initialp(generator gen[], int n, int genstatus [][10], int t)
+{
+	for (int q=0;q<n;q++)
+	{
+		if (genstatus[t][q]==1)
+		{
+			//gen[q].Pout=(rand()%((gen[q].Pmax-gen[q].Pmin)*1000))*0.01+gen[q].Pmin;
+			gen[q].Pout=gen[q].Pmin;
+		}
+		else
+		{
+			gen[q].Pout=0;
+		}
+	}//input active power limitation and random generate output power
+}
+
+// This function checks the first two constraints of the problem
+bool Validation(int status[24][10])
+{
+	bool result=true;
+	// Check demand constraint.
+	for (int i=0; i<24; i++) // time
+	{
+		int maxSupply=0;
+		for (int j=0; j<10; j++) // unit
+		{
+			maxSupply=maxSupply+Pmax[j]*status[i][j];
+		}
+		if (maxSupply<D[i]*1.1)
+		{
+			result=false;
+		}
+		else
+		{
+			result=true;
+		}
+	}
+	
+	// Check MUT/MDT constraint.
+	for (int i=0; i<10; i++) //unit
+	{
+		int curState;
+		if (Preduation[i]>0)
+		{
+			curState=1;
+		}
+		else
+		{
+			curState=0;
+		}
+		//int streak=1;
+		int streak=Preduation[i];
+		bool skip=true;
+		for (int j=0; j<24; j++) //time
+		{
+			if (status[j][i]==curState)
+			{
+				if (streak<0)
+				{
+					streak--;
+				}
+				else
+				{
+					streak++;
+				}
+			}
+			
+			else
+			{
+				if (skip)
+					skip=false;
+				else
+					if (((curState==0)&&((-streak)<Mindown[i]))|| //MDT
+						((curState==1)&&(streak<Minup[i]))) //MUT
+						result=false;
+					else
+						result=true;
+				curState=1-curState;
+				if (curState>0)
+				{
+					streak=1;
+				}
+				else
+				{
+					streak=-1;
+				}
+			}
+		}
+	}
+
+	return result;
+}
+
+double Fuelcost(generator gen[], int n, double genresult[][10], int t)
+{
+	double fuelcost=0;
+	for (int i=0;i<n;i++)//unit
+	{
+		//double cost=0;
+		for (int j=0;j<t;j++)//timesq
+		{
+			if (genresult[j][i]!=0)
+			{
+				fuelcost=fuelcost+genresult[j][i]*gen[i].b+genresult[j][i]*genresult[j][i]*gen[i].r+gen[i].a;
+			}
+		}
+	}
+
+	return fuelcost;
+}
+
+double Startcost(generator gen[], int n, int genstatus[][10], int t)
+{
+	double startcost=0;
+	for (int i=0;i<n;i++)
+	{
+		int gens=gen[i].initials;
+		for (int j=0;j<t;j++)
+		if((gens<0)&&(genstatus[j][i]==1))
+		{
+			if((-gens)>gen[i].mindown+gen[i].coldstarthour)
+			{
+				startcost=startcost+gen[i].coldstart;
+			}
+			else
+			{
+				startcost=startcost+gen[i].hotstart;
+			}
+			gens=1;
+		}
+		else if((gens<0)&&(genstatus[j][i]==0))
+		{
+			gens=gens-1;
+			//cout<<gens<<" ";
+		}
+		else if((gens>0)&&(genstatus[j][i]==1))
+		{
+			gens=gens+1;//gen[i].initials+1;
+			//cout<<gens<<" ";
+		}
+		else //if ((gens>0)&&(genstatus[j][i]==0))
+		{
+			gens=-1;
+		}
+	}
+
+	return startcost;
+}
+
+void genSwap(generator gen[], int n, int genstatus[][10],int t)
+{
+	//pick only 1 unit on hour
+	for (int i=0;i<24;i++)//time
+	{
+		int temp=0;
+		for (int j=0;j<n;j++)//unit from non-base
+		{
+			if (genstatus[i][j]==1)
+			{
+				temp=temp+1;
+			}
+		}
+		if (temp==NumberofBaseUnit+1)
+		{
+			for (int j=NumberofBaseUnit;j<n;j++)//unit from non-base
+			{
+				if (genstatus[i][j]==1)
+				{
+					int tempgen;
+					do
+					{
+						tempgen=(rand()%(n-2))+2;
+					}while(tempgen==j);
+					genstatus[i][tempgen]=1;
+					genstatus[i][j]=0;
+				}
+			}
+		}
+	}
+}
+
+//return absolute value
+double ABS(double a)
+{
+	if (a<0)
+	{
+		return -a;
+	}
+	else
+	{
+		return a;
+	}
+}
+
+double SumLambdaPower(generator* gen,int u, double J, int*D, int time,int genstatus [][10], int t)
+{
+	double Sum=0;
+	double Result=0;
+	for (int i=0;i<u;i++)
+	{
+		if (genstatus[time][i]==1)
+		{
+			double oSum=Sum;
+			if ((J-gen[i].b)/(2*gen[i].r)<gen[i].Pmin)
+			{
+				Sum=Sum+gen[i].Pmin;
+			}
+			else if ((J-gen[i].b)/(2*gen[i].r)>gen[i].Pmax)
+			{
+				Sum=Sum+gen[i].Pmax;
+			}
+			else
+			{
+				Sum=Sum+(J-gen[i].b)/(2*gen[i].r);
+			}
+		}
+	}
+	Result=Sum-D[time];
+	//cout<<endl<<"Lambda Sum: "<<Sum<<endl;
+	//cout<<"time t: "<<time<<endl;
+	//cout<<"Demand at time t: "<<D[time]<<endl;
+	//cout<<"Lambda J judge: "<<Result<<endl;
+	return Result;
+}
+
+void PowerdispatchLambda(generator* gen, int n, int genstatus [][10], int t, int D[], int t2, double genresult[][10], int t3)
+{
+	for (int i=0;i<t;i++)//time
+	{
+		double Error=0.05;
+		double Jlow=0;
+		double Jhigh=40;
+		double Jmean;
+		while (ABS(Jhigh-Jlow)>0.0000005)
+		{
+			Jmean=(Jlow+Jhigh)/2;
+			if(SumLambdaPower(gen,n,Jmean,D,i,genstatus,t)>0)
+			{
+				Jhigh=Jmean;
+				//cout<<"Lambda judge >0, new Jhigh: "<<Jhigh<<endl;
+			}
+			else
+			{
+				Jlow=Jmean;
+				//cout<<"Lambda judge <0, new Jlow: "<<Jlow<<endl;
+			}
+		}
+
+		for (int j=0;j<n;j++)//unit
+		{
+			if (genstatus[i][j]==1)
+			{
+				if ((Jmean-gen[j].b)/(2*gen[j].r)<gen[j].Pmin)
+				{
+					genresult[i][j]=gen[j].Pmin;
+				}
+				else if ((Jmean-gen[j].b)/(2*gen[j].r)>gen[j].Pmax)
+				{
+					genresult[i][j]=gen[j].Pmax;
+				}
+				else
+				{
+					genresult[i][j]=(Jmean-gen[j].b)/(2*gen[j].r);
+				}
+				//genresult[i][j]=(Jmean-gen[j].b)/(2*gen[j].r);
+				//cout<<"at time: "<<i<<" Unit: "<<j<<endl;
+				//cout<<"generation result: "<<genresult[i][j]<<endl;
+			}
+			else
+			{
+				genresult[i][j]=0;
+			}
+		}
+	}
+}
+
+//Given a sequence, return the corresponding cost
+int SequenceToCost(int* Sequence)//, int* D, int NumberofBaseUnit, int* priority, int* Pmax,int* Pmin,int* Preduation,
+				   //int* Minup,int* Mindown,double* A,double* B, double* R,double* Hstart,double* Cstart,int* coldstarthr)
+{
+	generator gen[10];//initial units
+	for (int q=0;q<10;q++)
+	{
+		gen[q].Pmax=Pmax[q];
+		gen[q].Pmin=Pmin[q];
+		gen[q].initials=Preduation[q];
+		gen[q].minup=Minup[q];
+		gen[q].mindown=Mindown[q];
+		gen[q].duration=Preduation[q];
+		gen[q].a=A[q];
+		gen[q].b=B[q];
+		gen[q].r=R[q];
+		gen[q].hotstart=Hstart[q];
+		gen[q].coldstart=Cstart[q];
+		gen[q].coldstarthour=coldstarthr[q];
+	}//input active power limitation
+	
+	//search for 10 times, pick the best one for the sequence
+	//double genresult[24][10];
+	//int genstatus[24][10]={0};
+	double MinTempResult=100000000000000;
+	double FinalResult;
+	int SequenceToCostIteration=3;
+	int jumpout=3;
+
+	while(SequenceToCostIteration>0)
+	{
+		double Tempgenresult[24][10];
+		int Tempgenstatus[24][10]={0};
+
+		//time counter
+		long FeasibleSolutionStart=clock(),FeasibleSolutionEnd(0);
+
+		Genstatusset1(Sequence,8,Tempgenstatus,24,gen,10,D,24,NumberofBaseUnit);
+
+		FeasibleSolutionEnd=clock();
+		long FeasibleSolution=(FeasibleSolutionEnd-FeasibleSolutionStart)/1000;
+		/*bool valid;
+		do
+		{
+			genSwap(gen,10,Tempgenstatus,24);
+			valid=Validation(Tempgenstatus);
+		}while (valid!=1);*/
+		PowerdispatchLambda(gen,10,Tempgenstatus,24,D,24,Tempgenresult,24);
+
+		double TotalCost,FuelCost,StartCost;
+		FuelCost=Fuelcost(gen,10,Tempgenresult,24);
+		StartCost=Startcost(gen,10,Tempgenstatus,24);
+		TotalCost=FuelCost+StartCost;
+
+		if (TotalCost<MinTempResult)
+		{
+			MinTempResult=TotalCost;
+			FinalResult=TotalCost;
+			SequenceToCostIteration=SequenceToCostIteration+3;
+		}
+
+		else
+		{
+			jumpout--;
+		}
+
+		if (TotalCost<=GlobalMinimum)
+		{
+			/*SequenceToCostIteration=SequenceToCostIteration+3;
+			//try swap to find better matrix
+			int TempMinTry[24][10];
+			double TempMinResult[24][10];
+			for (int t=0;t<24;t++)//time
+			{
+				for (int i=0;i<10;i++)//unit
+				{
+					TempMinTry[t][i]=Tempgenstatus[t][i];
+				}
+			}
+			bool valid;
+			do
+			{
+				genSwap(gen,10,TempMinTry,24);
+				valid=Validation(TempMinTry);
+			}while (valid!=1);
+			PowerdispatchLambda(gen,10,TempMinTry,24,D,24,TempMinResult,24);
+			double TempTotalCost,TempFuelCost,TempStartCost;
+			TempFuelCost=Fuelcost(gen,10,TempMinResult,24);
+			TempStartCost=Startcost(gen,10,TempMinTry,24);
+			TempTotalCost=TempFuelCost+TempStartCost;
+
+			if (TempTotalCost<=TotalCost)
+			{
+				GlobalMinimum=TempTotalCost;
+				for (int t=0;t<24;t++)
+				{
+					for (int i=0;i<10;i++)
+					{
+						GlobalMinResult[t][i]=TempMinResult[t][i];
+						GlobalStatus[t][i]=TempMinTry[t][i];
+					}
+				}
+				GlobalFuel=TempFuelCost;
+				GlobalStart=TempStartCost;
+
+				for (int i=0;i<8;i++)
+				{
+					GlobalSequence[i]=Sequence[i];
+				}
+			}*/
+			//else
+			//{
+				GlobalMinimum=TotalCost;
+				for (int t=0;t<24;t++)
+				{
+					for (int i=0;i<10;i++)
+					{
+						GlobalMinResult[t][i]=Tempgenresult[t][i];
+						GlobalStatus[t][i]=Tempgenstatus[t][i];
+					}
+				}
+				GlobalFuel=FuelCost;
+				GlobalStart=StartCost;
+			//}
+			
+			for (int i=0;i<8;i++)
+			{
+				GlobalSequence[i]=Sequence[i];
+			}
+		}
+
+		if (jumpout==0)
+		{
+			break;
+		}
+
+		//cout<<"doing the loop"<<endl;
+		FinalResult=GlobalMinimum;
+		SequenceToCostIteration--;
+	}
+
+	return FinalResult;
+}
+
+double RandomGen(double min, double max)
+{
+       int Min = (int)(min*1000000);
+       int Max = (int)(max*1000000);
+       int Rand = rand()*rand();
+       
+       int Result = Rand%(Max-Min)+Min;
+       
+       return Result/1000000.0; 
+}
+
+//to mimic the onwall reaction
+void OnWall(int* S, int u)//u=unit-unit base
+{
+	//double A=RandomGen(0,10);
+	//if (A<=5)
+	//{
+		int RandomNumber=rand()%(u-1);
+		int Temp;
+		Temp=S[RandomNumber];
+		S[RandomNumber]=S[RandomNumber+1];
+		S[RandomNumber+1]=Temp;	
+	//}
+}
+void OnWallReaction(Molecule S, Molecule Snew)
+{
+	Snew.PE=SequenceToCost(Snew.Sequence);
+
+	if (S.KE+S.PE>=Snew.PE)
+	{
+		double q=RandomGen(KElossrate,1);
+		Snew.KE=(S.KE+S.PE-Snew.PE)*q;
+		buffer=buffer+(S.KE+S.PE-Snew.PE)*(1-q);
+	}
+}
+
+//to modify the two supposed decomposition resultant molecules
+//to juedge whether the decomposition should happen or not
+void Decomposition(int* S, int* S1,int* S2,int u)//u=unit-unit base
+{
+	int Mid=u/2;
+	for (int i=0;i<Mid;i++)
+	{
+		S1[i]=S[i+Mid];
+		S1[i+Mid]=S[Mid-i-1];
+
+		S2[i+Mid]=S[i];
+		S2[Mid-i-1]=S[i+Mid];
+	}
+}
+
+bool DecomJudge(Molecule S, Molecule S1, Molecule S2)//(double w[], double w1[], double w2[], int ng, double buffer,int alpha)
+{
+    bool Result;
+    int Temp=S.KE+S.PE-S1.PE-S2.PE;
+	if(Temp>=0)
+	{
+		Result=1;
+	}
+	else if(Temp+buffer>=0)
+	{
+		Result=1;
+	}
+	else
+	{
+		Result=0;
+	}
+
+    return Result;
+}
+
+//to mimic the intermolecular collision
+void InterMolecular(int* UnitSequence, int u)//u=unit-unit base
+{
+	int RandomNumber1=rand()%(u-1);
+	int RandomNumber2=rand()%(u-1)+1;
+
+	do
+	{
+		RandomNumber2=rand()%(u-1)+1;
+	}while(RandomNumber1==RandomNumber2);
+
+	int Temp;
+	Temp=UnitSequence[RandomNumber1];
+	UnitSequence[RandomNumber1]=UnitSequence[RandomNumber2];
+	UnitSequence[RandomNumber2]=Temp;
+}
+void InterMolecularReaction(Molecule S1, Molecule S2, Molecule Snew1, Molecule Snew2)
+{
+	Snew1.PE=SequenceToCost(Snew1.Sequence);
+	Snew2.PE=SequenceToCost(Snew2.Sequence);
+	
+	int Temp=S1.PE+S1.KE+S2.PE+S2.KE-Snew1.PE-Snew2.PE;
+
+	if (Temp>=0)
+	{
+		double p=RandomGen(0.0,1.0);
+		Snew1.KE=Temp*p;
+		Snew2.KE=Temp*(1-p);
+	}
+}
+
+//to modify one molecule from two molecules
+//to judge whether the synthesis will happen
+void Synthesis(int* UnitSequence1, int* UnitSequence2,int* ResultS, int u)//u=number of unit without base units
+{  
+	int DuplicatedLocation[8]={0};
+	int NonDNumber=3;
+	int DuplicateCounter=0;
+	for (int i=0;i<u;i++)
+	{
+		if (UnitSequence1[i]!=UnitSequence2[i])
+		{
+			DuplicatedLocation[i]=0;
+		}
+		else if (UnitSequence1[i]==UnitSequence2[i])
+		{
+			ResultS[i]=UnitSequence1[i];
+			DuplicatedLocation[i]=UnitSequence1[i];
+			DuplicateCounter++;
+		}
+	}
+
+	int TempCounter=DuplicateCounter;
+	for (int i=0;i<u;i++)
+	{
+		if(DuplicatedLocation[i]==0)
+		{
+			while(TempCounter>0)
+			{
+				for (int j=0;j<8;j++)//check if already have duplicated number
+				{
+					if (NonDNumber==DuplicatedLocation[j])
+					{
+						NonDNumber++;
+					}
+				}
+				TempCounter--;
+			}
+			ResultS[i]=NonDNumber;
+			NonDNumber++;
+			TempCounter=DuplicateCounter;
+		}
+	}
+
+	if(DuplicateCounter==8)//two same molecules
+	{
+		int SwapTime=20;
+		do
+		{
+			int randomNumber1,randomNumber2;
+			do
+			{
+				randomNumber1=rand()%8;
+				randomNumber2=rand()%8;
+			}while(randomNumber1==randomNumber2);
+			int temp;
+			temp=ResultS[randomNumber1];
+			ResultS[randomNumber1]=ResultS[randomNumber2];
+			ResultS[randomNumber2]=temp;
+
+			SwapTime--;
+		}while((SwapTime>0));
+	}
+	else
+	{
+		int SwapTime=100;
+		do
+		{
+			int randomNumber1,randomNumber2;
+			do
+			{
+				randomNumber1=rand()%8;
+				randomNumber2=rand()%8;
+			}while((DuplicatedLocation[randomNumber1]!=0)||(DuplicatedLocation[randomNumber2]!=0));
+			int temp;
+			temp=ResultS[randomNumber1];
+			ResultS[randomNumber1]=ResultS[randomNumber2];
+			ResultS[randomNumber2]=temp;
+
+			SwapTime--;
+		}while((SwapTime>0));
+	}
+}
+bool SynthesisJudge(Molecule S1, Molecule S2, Molecule S)
+{
+	bool SynJudge=false;
+
+	if (S1.PE+S1.KE+S2.PE+S2.KE>=S.PE)
+	{
+		SynJudge=true;
+	}
+
+	return SynJudge;
+}
+Molecule SynthesisFix(Molecule S1, Molecule S2,Molecule S)
+{
+	Molecule Result;
+	for (int i=0;i<8;i++)
+	{
+		Result.Sequence[i]=S.Sequence[i];
+	}
+	Result.PE=SequenceToCost(Result.Sequence);
+	Result.KE=S1.PE+S1.KE+S2.PE+S2.KE-Result.PE;
+	return Result;
+}
+
+int *InitialSequence(int NoneBaseUnit,int SwapTime)//swaptime=100
+{	
+	int *Sequence=new int[NoneBaseUnit];
+	int Number=0;// to give the Sequence a initial value {0,1,2,3,4,5,6,7}
+	for (int i=0;i<NoneBaseUnit;i++)
+	{
+		Sequence[i]=Number;
+		Number++;
+	}
+	do
+	{
+		int randomNumber1=rand()%8;
+		int randomNumber2=rand()%8;
+		while (randomNumber1==randomNumber2)
+		{
+			randomNumber2=rand()%8;
+		}
+		int temp;
+		temp=Sequence[randomNumber1];
+		Sequence[randomNumber1]=Sequence[randomNumber2];
+		Sequence[randomNumber2]=temp;
+
+		SwapTime--;
+	}while((SwapTime>0));
+
+	for (int i=0;i<NoneBaseUnit;i++)
+	{
+		Sequence[i]=Sequence[i]+3;
+	}
+
+	return Sequence;
+	delete Sequence;
+	delete []Sequence;
+}
+
+double converge[3000]={0};
+int counter;
+int main()
+{
+	srand(time(NULL));
+	
+	int LoopTime=50;
+	int LoopTimeCheck=LoopTime;
+	double LoopResult[50];
+	int loop=0;
+	double LoopMaxCost=0;
+	double LoopMinCost=1000000000000;
+	//for CPU time counting
+	
+	long TotalLoopTime=0;
+
+	//Function Evaluation
+	int FE=0;
+	int FEmax=5000;
+	while (LoopTime>0)
+	{
+		//time counting
+		long LoopStart=clock(),LoopEnd(0);
+		counter=0;
+		GlobalMinimum=10000000000000;
+
+		Molecule SolutionSpace[100];//0-7 for unit sequence, 8\9 for KE and PE. 10 for number of initialized molecules
+		int DecomCounter=0;
+		int SynCounter=0;
+		int OnwallCounter=0;
+		int InterCounter=0;
+
+		buffer=0; 
+		int InitialKE=100;
+
+		for(int i=0;i<InitialPopulation;i++) // 5 is the number of initially generated molecules.  
+		{
+				int *InitialMolecule=InitialSequence(8,20);//8 nonebase units, 100 for swaptime
+				for (int j=0;j<8;j++)
+				{
+					int temp;
+					temp=InitialMolecule[j];
+					SolutionSpace[i].Sequence[j]=temp;
+				}
+				//SolutionSpace[i].NumofHit=0;
+				//SolutionSpace[i].MinNumofHit=0;
+				SolutionSpace[i].KE=InitialKE;
+				SolutionSpace[i].PE=SequenceToCost(InitialMolecule);
+			
+				delete InitialMolecule;
+		}
+		//check initialization
+
+		cout<<endl;
+		double Judge;//to judge whether intermolecular will happen
+		int Minimum[100000];
+		int v=0;
+		int Population=InitialPopulation;
+		//int Iterations=2000;
+		//int Check=Iterations;
+
+		//Reset FE
+		FE=0;
+
+		while(FE<FEmax)
+		{
+			//Judge = RandomGen(0.0, 1.0);
+			Judge=RandomGen(0,1.0);
+			//single molecular reactions
+			if ((Judge>Molecoll)||(Population==1)) 
+			{                         
+				int ranini=0;
+				if(Population!=1)
+				{
+					ranini=rand()%(Population-1);
+				}
+				else
+				{
+					ranini=0;
+				}
+				//cout<<ranini<<endl;
+			
+				//SolutionSpace[ranini].NumofHit=SolutionSpace[ranini].NumofHit+1;
+				Molecule w,wtemp1,wtemp2;//to temporarily have the value in the ramdom picked molecule
+				w=SolutionSpace[ranini];        			
+
+				Decomposition(w.Sequence,wtemp1.Sequence,wtemp2.Sequence,Unit-NumberofBaseUnit);//do decom on w
+				//DecompositionFix(w,wtemp1,wtemp2);
+				wtemp1.PE=SequenceToCost(wtemp1.Sequence);
+				wtemp2.PE=SequenceToCost(wtemp2.Sequence);
+				
+				//check if the decom result w from random selected molecule is acceptable
+				bool DecompositionJudge=DecomJudge(w,wtemp1,wtemp2);
+			
+				if ((DecompositionJudge==1)||(Population==1))//Decomposition happens, replace the molecules
+				{
+					int Temp=w.KE+w.PE-wtemp1.PE-wtemp2.PE;
+					if(Temp>=0)
+					{
+						double k=RandomGen(0.0,1.0);
+						wtemp1.KE=Temp*k;
+						wtemp2.KE=Temp*(1-k);
+					}
+					else if(Temp+buffer>=0)
+					{
+						double m1=RandomGen(0.0,1.0);
+						double m2=RandomGen(0.0,1.0);
+						double m3=RandomGen(0.0,1.0);
+						double m4=RandomGen(0.0,1.0);
+						wtemp1.KE=(Temp+buffer)*m1*m2;
+						wtemp2.KE=(Temp+buffer-wtemp1.KE)*m3*m4;
+						buffer=buffer+Temp-wtemp1.KE-wtemp2.KE;
+					}
+					
+					SolutionSpace[ranini]=wtemp1;
+					SolutionSpace[Population]=wtemp2;
+
+					DecomCounter++;
+					//Iterations--;
+					Population++;
+
+					FE=FE+2;
+				}
+				else//on wall happens
+				{                            
+					Molecule Temp=SolutionSpace[ranini];//temp is the onwall try resultant molecule
+					OnWall(Temp.Sequence,8);
+					OnWallReaction(SolutionSpace[ranini],Temp);
+					//problem remained, what if the Temp>=xx not satisfied? same for Inter-Collision
+					SolutionSpace[ranini]=Temp;
+					OnwallCounter++;
+					//Iterations--;
+
+					FE++;
+				}
+			}
+		
+			//intermolecular reactions
+			else if((Judge<=Molecoll)&&(Population>=2))
+			{
+				int ranini01=rand()%(Population-1);
+				int ranini02=rand()%(Population-1);
+				/*while (ranini01==ranini02)
+				{
+					ranini02=rand()%(Population-1);
+				}*/
+				Molecule TempSynResult;
+				Synthesis(SolutionSpace[ranini01].Sequence,SolutionSpace[ranini02].Sequence,TempSynResult.Sequence,
+					Unit-NumberofBaseUnit);
+				TempSynResult=SynthesisFix(SolutionSpace[ranini01],SolutionSpace[ranini02],TempSynResult);
+				bool SynJudge;
+				SynJudge=SynthesisJudge(SolutionSpace[ranini01],SolutionSpace[ranini02],TempSynResult);        
+				if (SynJudge==1) //synthesis, replace the one by the synthesis result and delete the other origin one.
+				{				
+					//replace the old molecule with one of the synthesis results
+					SolutionSpace[ranini01]=TempSynResult;
+
+					//delete the w02 from the Solution matrix.
+					for (int i=ranini02;i<Population;i++)
+					{
+						SolutionSpace[i]=SolutionSpace[i+1];
+					}
+					SynCounter++;
+					Population--;
+					//Iterations--;
+
+					FE++;
+				}
+				else//intermolecular ineffective collision
+				{
+					Molecule InterResult1, InterResult2;
+					InterResult1=SolutionSpace[ranini01];
+					InterResult2=SolutionSpace[ranini02];
+					InterMolecular(InterResult1.Sequence,Unit-NumberofBaseUnit);
+					InterMolecular(InterResult2.Sequence,Unit-NumberofBaseUnit);
+
+					InterMolecularReaction(SolutionSpace[ranini01],SolutionSpace[ranini02],
+						InterResult1,InterResult2);
+
+					InterCounter++;
+					//Iterations--;
+
+					FE=FE+2;
+				}
+			}
+			else
+			{
+				cout<<"Break!!";
+				break;
+			}
+			int Min=10000000000;
+			for (int i=0;i<Population;i++)
+			{
+				if (SolutionSpace[i].PE<Min)
+				{
+					Min=SolutionSpace[i].PE;
+					Minimum[v]=Min;
+				}
+			}
+			v++;
+		}
+
+		/*int Min=100000000000;
+		int TheMinMolecule=0;
+		for (int i=0;i<Population;i++)
+		{
+			if (SolutionSpace[i].PE<Min)
+			{
+				TheMinMolecule=i;
+			}
+		}*/	
+		cout<<endl;
+		cout<<"On-Wall: "<<OnwallCounter<<endl;
+		cout<<"Decomposition: "<<DecomCounter<<endl;
+		cout<<"Inter-Molecule Collision: "<<InterCounter<<endl;
+		cout<<"Synthesis: "<<SynCounter<<endl;
+
+		double MinimumResult=10000000000000;
+
+		cout<<endl<<"Better Result during iterations: "<<endl;
+		for (int i=0;i<v;i++)//check = iteration times
+		{
+			if (Minimum[i]<MinimumResult)
+			{
+				cout<<Minimum[i]<<" ";
+				MinimumResult=Minimum[i];
+			}
+		}
+
+		cout<<endl<<"Result every 100 iterations: "<<endl;
+		for (int i=0;i<v;i++)//check = iteration times
+		{
+			if (i%500==0)
+			{
+				cout<<Minimum[i]<<" ";
+				converge[counter]=converge[counter]+Minimum[i];
+				//cout<<" converge: "<<converge[counter]<<endl;
+				counter++;
+			}
+			if (i%500==0)
+			{
+				cout<<endl;
+			}
+		}
+
+		cout<<endl<<"Loop "<<LoopTime<<" Done!"<<endl;
+		cout<<"best result during this loop: "<<MinimumResult<<endl;
+		LoopResult[loop]=MinimumResult;
+		loop++;
+		LoopTime--;
+
+		//time end
+		LoopEnd=clock();
+		TotalLoopTime=TotalLoopTime+(LoopEnd-LoopStart)/1000;
+		cout<<endl<<"Loop Time Used: "<<(LoopEnd-LoopStart)/1000<<endl;
+
+	}
+
+	double LoopSum=0;
+	double LoopMean;
+
+	for (int l=0;l<LoopTimeCheck;l++)//looptimecheck = loop time
+	{
+		if (LoopMaxCost<LoopResult[l])
+		{
+			LoopMaxCost=LoopResult[l];
+		}
+		if (LoopMinCost>LoopResult[l])
+		{
+			LoopMinCost=LoopResult[l];
+		}
+		LoopSum=LoopSum+LoopResult[l];
+	}
+	LoopMean=LoopSum/LoopTimeCheck;
+
+	cout<<"Loop worst result: "<<LoopMaxCost<<endl;
+	cout<<"Loop best result: "<<LoopMinCost<<endl;
+	cout<<"Loop mean result: "<<LoopMean<<endl;
+	
+	cout<<"Best Status detailed Result:"<<endl;
+	for (int t=0;t<T;t++)
+	{
+		for (int i=0;i<N;i++)
+		{
+			cout<<GlobalStatus[t][i]<<"\t";
+		}
+		cout<<endl;
+	}
+
+	cout<<"Best ED detailed Result:"<<endl;
+	for (int t=0;t<T;t++)
+	{
+		for (int i=0;i<N;i++)
+		{
+			cout<<GlobalMinResult[t][i]<<"\t";
+		}
+		cout<<endl;
+	}
+
+	cout<<endl<<"Best Sequence Result:"<<endl;
+	for (int i=0;i<N-NumberofBaseUnit;i++)
+	{
+		cout<<GlobalSequence[i]<<" ";
+	}
+
+	cout<<endl<<"Average converge:"<<endl;
+	for (int i=0;i<counter;i++)
+	{
+		cout<<converge[i]/LoopTimeCheck<<" ";
+	}
+
+	cout<<endl<<"Best FuelCost Result: "<<GlobalFuel<<endl;
+
+	cout<<endl<<"Best StartCost Result: "<<GlobalStart<<endl;
+	
+	cout<<endl<<"Total Time Used: "<<TotalLoopTime<<endl;
+
+	getchar();
+	return 0;
+}
