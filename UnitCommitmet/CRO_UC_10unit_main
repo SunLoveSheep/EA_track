@@ -1,0 +1,662 @@
+/*
+
+Created in 2012.10 by Mike Yi SUN
+
+Testing Unit Commitment problem with 10 unit system using Chemical Reaction Optimization
+
+*/
+
+
+#include<iostream>
+#include<stdlib.h> 
+#include<stdio.h> 
+#include<time.h> 
+
+using namespace std;
+
+class generator
+{
+public:
+	int Pout;
+	int Pmax;
+	int Pmin;//active power output; max&min power limitation
+	int minup;
+	int mindown;//minimum up and down time
+	double rampup;
+	double rampdown;//ramp up and down rate
+	//double startcost;
+	double hotstart;
+	double coldstart;
+	int coldstarthour;
+	//double downcost;//start up and shut down cost
+	int opstatus;//operation status, 0 for off, 1 for on
+	int initials;//initial status
+	int duration;//already on or off time duration
+	double a,b,r;//economic coeifficients
+};
+
+//calculate the sum power output 
+double Sump(generator gen[], int n)//double calcTotalPower
+{
+	double sump=0;
+	for (int q=0;q<n;q++)
+	{
+		sump=sump+gen[q].Pout;
+	}
+
+	return sump;
+}
+
+void Genstatusset1(int genseq[], int n, int genstatus[][10], int t, generator gen[], int m, int D[], int t1)
+{
+	//base unit preset to 1
+	for (int i=0;i<t;i++)
+	{
+		for (int j=0;j<2;j++)
+		{
+			genstatus[i][j]=1;
+		}
+	}
+
+	//peak preset
+	for (int k=0;k<n;k++)
+	{
+		for (int i=1;i<t-1;i++)
+		{
+			double sum=0;
+			for (int a=0;a<m;a++)
+			{
+				if (genstatus[i][a]==1)
+				{
+					sum=sum+gen[a].Pmax;
+				}
+			}
+			if ((D[i]>D[i-1])&&(D[i]>D[i+1])&&(sum<D[i]*1.1))
+			{
+				genstatus[i][genseq[k]-1]=1;
+				int temp=rand()%gen[genseq[k]-1].minup;
+				for (int j=i-temp;j<i-temp+gen[genseq[k]-1].minup;j++)
+				{
+					genstatus[j][genseq[k]-1]=1;
+				}
+			}
+		}
+	}
+	//reserve preset
+	for (int k=0;k<n;k++)
+	{
+		for (int i=1;i<t-1;i++)
+		{
+			double sum=0;
+			for (int a=0;a<m;a++)
+			{
+				if (genstatus[i][a]==1)
+				{
+					sum=sum+gen[a].Pmax;
+				}
+			}
+			if (sum<D[i]*1.1)
+			{
+				genstatus[i][genseq[k]-1]=1;
+			}
+		}
+	}
+
+	
+	//set other 0(not preset) positions
+	for (int k=0;k<n;k++)
+	{
+		int duration=gen[genseq[k]-1].duration;
+		for (int i=0;i<t;i++)
+		{
+			//if the status has been preset
+			if (genstatus[i][genseq[k]-1]==1)
+			{
+				if (duration>0)
+				{
+					duration=duration+1;
+				}
+				else
+				{
+					duration=1;
+				}
+			}
+			//no preset to 1
+			else //if (genstatus[i][genseq[k]-1]==0)
+			{
+				// if MUT/MDT not satisfied
+				if ((duration>0)&&(duration<gen[genseq[k]-1].minup))
+				{
+					genstatus[i][genseq[k]-1]=1;
+					duration=duration+1;
+				}
+				else if ((duration<0)&&((-duration)<gen[genseq[k]-1].mindown))
+				{
+					int tem=0;
+					if ((i+gen[genseq[k]-1].mindown+duration)<24)
+					{
+						for (int j=i;j<i+gen[genseq[k]-1].mindown+duration;j++)
+						{
+							tem=tem+genstatus[j][genseq[k]-1];
+						}
+						if (tem!=0)
+						{
+							for (int j=i+duration;j<i+gen[genseq[k]-1].mindown+duration;j++)
+							{
+								genstatus[j][genseq[k]-1]=1;
+							}
+							duration=(-duration)+gen[genseq[k]-1].minup+1;
+						}
+						else
+						{
+							duration=duration-1;
+						}
+					}
+					else
+					{
+						duration=duration-1;
+					}
+				}
+				//if MUT/MDT satisfied
+				else //if(((duration>0)&&(duration>=gen[genseq[k]-1].minup))||(duration<0)&&((-duration)>=gen[genseq[k]-1].mindown))
+				{
+					double sum=0;
+					for (int a=0;a<m;a++)
+					{
+						//if (genstatus[i][a]==1)
+						//{
+							sum=sum+gen[a].Pmax*genstatus[i][a];
+						//}
+					}
+					//if Reserve not satisfied
+					/*if (sum<(D[i]*1.1))
+					{
+						genstatus[i][genseq[k]-1]=1;
+						if (duration>0)
+						{
+							duration=duration+1;
+						}
+						else
+						{
+							duration=1;
+						}
+					}*/
+					//if Reserve satisfied
+					if (sum>=(D[i]*1.1))
+					{
+						
+						//cout<<"at time: "<<i;
+						//cout<<" unit: "<<genseq[k]-1;
+						//cout<<" duration: "<<duration<<endl;
+						if (duration>0)
+						{
+							//for unit priority correction, remove this part. Not knowing why.
+							int tem=0;
+							if((i+gen[genseq[k]-1].mindown)<24)
+							{
+								for (int j=i;j<i+gen[genseq[k]-1].mindown;j++)
+								{
+									tem=tem+genstatus[j][genseq[k]-1];
+								}
+								if (tem!=0)
+								{
+									for (int jj=i;jj<i+gen[genseq[k]-1].mindown;jj++)
+									{
+										genstatus[jj][genseq[k]-1]=1;
+									}
+									duration=gen[genseq[k]-1].minup+1;
+								}
+								else
+								{
+									duration=-1;
+								}
+							}
+							else //i+gen[genseq[k]-1].mindown>24
+							{
+								for (int j=i;j<24;j++)
+								{
+									tem=tem+genstatus[j][genseq[k]-1];
+								}
+								if (tem!=0)
+								{
+									for (int jj=i;jj<24;jj++)
+									{
+										genstatus[jj][genseq[k]-1]=1;
+									}
+									duration=gen[genseq[k]-1].minup+1;
+								}
+								else
+								{
+									duration=-1;
+								}
+							}
+						}
+						else// if (duration<0)
+						{
+							/*int tem=0;
+							for (int j=i;j<i+gen[genseq[k]-1].mindown+duration;j++)
+							{
+								tem=tem+genstatus[j][genseq[k]-1];
+							}
+							if (tem>0)
+							{
+								for (int j=i+duration;j<i+gen[genseq[k]-1].mindown+duration;j++)
+								{
+									genstatus[j][genseq[k]-1]=1;
+								}
+								duration=duration+gen[genseq[k]-1].mindown+gen[genseq[k]-1].minup-tem;
+							}*/
+							//else
+							//genstatus[i][genseq[k]-1]=0;
+							duration=duration-1;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+void Initialp(generator gen[], int n, int genstatus [][10], int t, int t1)
+{
+	for (int q=0;q<n;q++)
+	{
+		if (genstatus[t1][q]==1)
+		{
+			//gen[q].Pout=(rand()%((gen[q].Pmax-gen[q].Pmin)*1000))*0.01+gen[q].Pmin;
+			gen[q].Pout=gen[q].Pmin;
+		}
+		else
+		{
+			gen[q].Pout=0;
+		}
+	}//input active power limitation and random generate output power
+}
+
+void Powerdispatch(generator gen[], int n, int genstatus [][10], int t1, int D[], int t2, int genresult[][10], int t3, int priority[], int n1)
+{
+	for (int t=0;t<t1;t++)
+	{
+		Initialp(gen,10,genstatus,t1,t);
+		int sump=0;
+		sump=Sump(gen,10);
+		//priority of units pri[10]={1,3,4,2,5,6,8,9,10,7};
+
+		for (int q=0;q<10;q++)
+		{
+			if (sump<D[t])		
+			{
+				if ((gen[priority[q]-1].Pout<gen[priority[q]-1].Pmax)&&(gen[priority[q]-1].Pout!=0))
+				{
+					gen[priority[q]-1].Pout=gen[priority[q]-1].Pmax;
+				}
+				int sump1=0;
+				sump1=Sump(gen,10);
+				if(sump1>=D[t])
+				{
+					gen[priority[q]-1].Pout=gen[priority[q]-1].Pout-(sump1-D[t]);
+					//gen[q].Pout=Pboundary(gen[q]);
+					break;
+				}
+			}
+		}//to balance the power output when supply is less than demand
+		sump=Sump(gen,10);
+
+
+		//for output check
+		for (int q=0;q<n;q++)
+		{
+			genresult[t][q]=gen[q].Pout;
+		}
+	}
+}
+
+// This function checks the first two constraints of the problem
+bool validation(int status[24][10], int* demand, int* Pmax, int* MUT, int* MDT)
+{
+	// Check demand constraint.
+	for (int i=0; i<24; i++) // time
+	{
+		int maxSupply=0;
+		for (int j=0; j<10; j++) // unit
+			maxSupply+=Pmax[j]*status[i][j];
+		if (maxSupply<demand[i]*1.1)
+			return false;
+	}
+	// Check MUT/MDT constraint.
+	for (int i=0; i<10; i++) //unit
+	{
+		int curState=status[0][i];
+		int streak=1;
+		bool skip=true;
+		for (int j=1; j<24; j++) //time
+		{
+			if (status[j][i]==curState)
+				streak++;
+			else
+			{
+				if (skip)
+					skip=false;
+				else
+					if (((curState==0)&&(streak<MDT[i]))|| //MDT
+						((curState==1)&&(streak<MUT[i]))) //MUT
+						return false;
+				curState=1-curState;
+				streak=1;
+			}
+		}
+	}
+	return true;
+}
+
+double Fuelcost(generator gen[], int n, int genresult[][10], int t)
+{
+	double fuelcost=0;
+	for (int i=0;i<n;i++)
+	{
+		double cost=0;
+		for (int j=0;j<t;j++)
+		{
+			if (genresult[j][i]!=0)
+			{
+				fuelcost=fuelcost+genresult[j][i]*gen[i].b+genresult[j][i]*genresult[j][i]*gen[i].r+gen[i].a;
+			}
+		}
+	}
+
+	return fuelcost;
+}
+
+double Startcost(generator gen[], int n, int genstatus[][10], int t)
+{
+	double startcost=0;
+	for (int i=0;i<n;i++)
+	{
+		int gens=gen[i].initials;
+		for (int j=0;j<t;j++)
+		if((gens<0)&&(genstatus[j][i]==1))
+		{
+			if((-gens)>gen[i].mindown+gen[i].coldstarthour)
+			{
+				startcost=startcost+gen[i].coldstart;
+			}
+			else
+			{
+				startcost=startcost+gen[i].hotstart;
+			}
+			gens=1;
+		}
+		else if((gens<0)&&(genstatus[j][i]==0))
+		{
+			gens=gens-1;
+			//cout<<gens<<" ";
+		}
+		else if((gens>0)&&(genstatus[j][i]==1))
+		{
+			gens=gens+1;//gen[i].initials+1;
+			//cout<<gens<<" ";
+		}
+		else //if ((gens>0)&&(genstatus[j][i]==0))
+		{
+			gens=-1;
+		}
+	}
+
+	return startcost;
+}
+
+void genSwap(generator gen[], int n, int genstatus[][10],int t, int D[], int t1)
+{
+	//pick only 1 unit on hour
+	for (int i=0;i<t;i++)//time
+	{
+		int temp=0;
+		for (int j=2;j<n;j++)//unit from non-base
+		{
+			if (genstatus[i][j]==1)
+			{
+				temp=temp+1;
+			}
+		}
+		if (temp==1)
+		{
+			for (int j=2;j<n;j++)//unit from non-base
+			{
+				if (genstatus[i][j]==1)
+				{
+					int tempgen=(rand()%(n-2))+2;
+					if (tempgen!=j)
+					{
+						genstatus[i][tempgen]=1;
+						genstatus[i][j]=0;
+					}
+					//cout<<tempgen<<endl;
+					break;
+				}
+			}
+		}
+	}
+}
+
+//CRO operators
+void OnWall(int UnitSequence[], int u)//u=unit-unit base
+{
+	int RandomNumber=rand()%(u-1);
+	int Temp;
+	Temp=UnitSequence[RandomNumber];
+	UnitSequence[RandomNumber]=UnitSequence[RandomNumber+1];
+	UnitSequence[RandomNumber+1]=Temp;
+}
+
+int main()
+{
+	srand(time(NULL));
+	int D[24]={700,750,850,950,1000,1100,1150,1200,1300,1400,1450,1500,1400,1300,1200,
+				1050,1000,1100,1200,1400,1300,1100,900,800};
+	//generator gen1, gen2, gen3;
+	generator gen[10];//initial units
+	//int genresult[24][10];
+	int genpri[10]={1,3,4,2,5,6,8,9,10,7};
+	//int genstatus[24][10]={0};
+	//double tcost,fcost,scost;
+
+	int Pmax[10]={455,455,130,130,162,80,85,55,55,55};//input of power output limits
+	int Pmin[10]={150,150,20,20,25,20,25,10,10,10};
+	int Preduation[10]={8,8,-5,-5,-6,-3,-3,-1,-1,-1};
+	int Minup[10]={8,8,5,5,6,3,3,1,1,1};
+	int Mindown[10]={8,8,5,5,6,3,3,1,1,1};
+	double A[10]={1000,970,700,680,450,370,480,660,665,670};
+	double B[10]={16.19,17.26,16.6,16.5,19.7,22.26,27.74,25.92,27.27,27.79};
+	double R[10]={0.00048,0.00031,0.002,0.00211,0.00398,0.00712,0.0079,0.00413,0.00222,0.00173};
+	double Hstart[10]={4500,5000,550,560,900,170,260,30,30,30};
+	double Cstart[10]={9000,10000,1100,1120,1800,340,520,60,60,60};
+	int coldstarthr[10]={5,5,4,4,4,2,2,0,0,0};
+	
+
+	//cout<<"power output on every unit before balance"<<endl;
+	for (int q=0;q<10;q++)
+	{
+		gen[q].Pmax=Pmax[q];
+		gen[q].Pmin=Pmin[q];
+		gen[q].initials=Preduation[q];
+		gen[q].minup=Minup[q];
+		gen[q].mindown=Mindown[q];
+		gen[q].duration=Preduation[q];
+		gen[q].a=A[q];
+		gen[q].b=B[q];
+		gen[q].r=R[q];
+		gen[q].hotstart=Hstart[q];
+		gen[q].coldstart=Cstart[q];
+		gen[q].coldstarthour=coldstarthr[q];
+	}//input active power limitation
+
+	//int genseq[8]={3,4,5,6,7,8,9,10};
+	int iteration=0;
+
+	double averageCost=0;
+	double averageStartCost=0;
+	double minResult=1000000;
+
+	//CRO related parameters
+	int Population=10;//number of solutions
+	int Unit=10;//number of units
+	int UnitBase=2;//number of base units
+	int SolutionSpace[10][8];
+
+
+	do
+	{
+		for (int n=0;n<Population;n++)//initialize n solutions
+		{
+			int swapTime=0;//to let the sequence swap for a preset times
+			int randomUnitSequence[8]={0,1,2,3,4,5,6,7};
+			//int randomUnitSequence[8]={7,8,9,5,10,4,3,6};
+			do
+			{
+				int randomNumber1=rand()%7;
+				int randomNumber2=rand()%7;
+				int temp;
+				temp=randomUnitSequence[randomNumber1];
+				randomUnitSequence[randomNumber1]=randomUnitSequence[randomNumber2];
+				randomUnitSequence[randomNumber2]=temp;
+				swapTime++;
+			}while(swapTime<1000);
+
+			for (int i=0;i<8;i++)
+			{
+				randomUnitSequence[i]=randomUnitSequence[i]+3;
+			}
+
+			for (int u=0;u<Unit-UnitBase;u++)
+			{
+				SolutionSpace[n][u]=randomUnitSequence[u];
+			}
+		}
+		
+		int genresult[24][10];
+		int genstatus[24][10]={0};
+
+		int RandomNumber=rand()%10;
+		int randomUnitSequence[8];
+		for (int u=0;u<Unit-UnitBase;u++)
+		{
+			randomUnitSequence[u]=SolutionSpace[RandomNumber][u];
+		}
+
+		Genstatusset1(randomUnitSequence,8,genstatus,24,gen,10,D,24);
+
+		//only 1 unit on hour swaping
+		bool valid;
+		do
+		{
+			genSwap(gen,10,genstatus,24,D,24);
+			valid=validation(genstatus, D, Pmax, Minup, Mindown);
+		}while (valid!=1);
+
+		Powerdispatch(gen,10,genstatus,24,D,24,genresult,24,genpri,10);
+
+		/*for (int t=0;t<24;t++)
+		{
+			for (int q=0;q<10;q++)
+			{
+				cout<<genresult[t][q]<<" ";
+			}
+			cout<<endl;
+		}
+		cout<<endl;
+
+		for (int z=0;z<24;z++)
+		{
+			for (int x=0;x<10;x++)
+			{
+				cout<<genstatus[z][x]<<" ";
+			}
+			cout<<endl;
+		}*/
+		double tcost,fcost,scost;
+		fcost=Fuelcost(gen,10,genresult,24);
+		scost=Startcost(gen,10,genstatus,24);
+		tcost=fcost+scost;
+		//cout<<endl<<fcost<<" "<<scost<<" "<<tcost<<endl;
+
+		
+		//cout<<endl<<validation(genstatus, D, Pmax, Minup, Mindown)<<endl;
+		if (valid==0)
+		{
+			for (int z=0;z<24;z++)
+			{
+				for (int x=0;x<10;x++)
+				{
+					cout<<genstatus[z][x]<<" ";
+				}
+				cout<<endl;
+			}
+			cout<<endl;
+			
+			for (int t=0;t<24;t++)
+			{
+				for (int q=0;q<10;q++)
+				{
+					cout<<genresult[t][q]<<" ";
+				}
+				int maxSupply=0;
+				for (int j=0; j<10; j++) // unit
+				{
+					maxSupply+=Pmax[j]*genstatus[t][j];
+				}
+				if (maxSupply<D[t]*1.1)
+				{
+					cout<<"!!error demand meeting";
+				}
+				cout<<endl;
+			}
+			cout<<endl;
+
+			for (int ii=0;ii<8;ii++)
+			{
+				cout<<randomUnitSequence[ii]<<" ";
+			}
+			cout<<endl;
+			cout<<"iteration "<<iteration<<" ";
+			cout<<"initial error encountered!"<<endl;
+			break;
+		}
+
+		iteration++;
+		averageCost=averageCost+tcost;
+		averageStartCost=averageStartCost+scost;
+		if (tcost<minResult)
+		{
+			minResult=tcost;
+			cout<<iteration<<endl;
+			cout<<minResult<<endl;
+			for (int t=0;t<24;t++)
+			{
+				for (int q=0;q<10;q++)
+				{
+					cout<<genresult[t][q]<<" ";
+				}
+				cout<<endl;
+			}
+			cout<<endl;
+
+			for (int z=0;z<24;z++)
+			{
+				for (int x=0;x<10;x++)
+				{
+					cout<<genstatus[z][x]<<" ";
+				}
+				cout<<endl;
+			}
+		}
+
+	}while(iteration<20000);
+
+	cout<<endl;
+	cout<<"average start cost: "<<averageStartCost/iteration<<endl;
+	cout<<"average cost: "<<averageCost/iteration<<endl;
+	cout<<"min cost: "<<minResult<<endl;
+
+	system("pause");
+	return 0;
+}
