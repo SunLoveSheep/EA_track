@@ -1,0 +1,2681 @@
+/*
+
+Created on 2015.4 by Mike Yi SUN
+A one-script .cpp to test Unit Commitment problem using Chemical Reaction Optimization under a 118 bus system.
+Worst case wind power is implemented and solved by CRO as well. 
+Gurobi library is used to calculate and compare results from linear programming with CRO.
+Price-based Demand Response is also included.
+
+*/
+
+
+#include<iostream>
+#include<fstream>
+#include<stdlib.h> 
+#include<stdio.h> 
+#include<time.h>
+#include<math.h>
+#include<string>
+#include<cstdlib>
+#include "gurobi_c++.h"
+//#include "vld.h"
+
+using namespace std;
+//global variables
+	double DBase[24]={4242,3916,3698,3589,3481,3484,3589,3807,4351,4786,4896,4950,4895,4786,
+				4732,4732,4950,5438,5385,5276,5112,5003,4732,4406};
+	double No_DR_Income=1623510;
+	//double DBase[24]={3242,2916,2698,2589,2481,2484,2589,2807,3351,3786,3896,3950,4895,4786,
+	//						4732,4732,4950,5438,3385,3276,3112,3003,2732,2406};
+	//double No_DR_Income=1263540;
+	//total 84236, with 15$/MWh, total cost 1263540
+	//double DBase_windDR[24]={3242,2916,2698,2589,2481,2484,2589,2807,3351,3786,3950,4895,4786,
+	//						4732,4732,4950,5438,3385,3276,3112,3003,2732,2406};
+	//With wind power involved, first with the given statusmatrix, find the worst case wind output
+	//which means maximize the generation cost, then implement DR
+	double SR[24]={211,196,185,179,174,174,179,190,218,239,245,247,245,239,237,237,247,272,269,264,256,250,237,220};
+	//int genpeak[8]={6,5,3,4,7,8,9,10};
+
+	double Pmax[36]={350,350,350,350,400,400,400,400,400,12,20,20,20,20,20,20,76,76,76,76,
+				100,100,100,100,100,100,100,155,155,155,197,197,197,197,197,197};//input of power output limits
+	double Pmin[36]={140,140,140,140,100,100,100,100,100,2.4,4,4,4,4,4,4,15.2,15.2,15.2,15.2,
+				25,25,25,25,25,25,25,54.25,54.25,54.25,68.95,68.95,68.95,68.95,68.95,68.95};
+	double FC[36]={12,12,12,12,15,15,15,15,15,1,1,1,1,1,1,2,2,2,2,4,4,4,4,4,4,4,
+							8,8,8,10,10,10,10,10,10,10};
+	double RC[36]={50,50,50,50,80,80,80,80,80,0,3,3,3,3,3,8,8,8,8,
+							10,10,10,10,10,10,10,20,20,20,30,30,30,30,30,30,30};
+	int Preduation[36]={10,10,10,10,10,10,10,10,10,-1,-1,-1,-1,-1,-1,-1,3,3,3,3,5,5,5,-3,-3,-3,-3,
+						5,5,5,-4,-4,-4,-4,-4,-4};
+	int Minup[36]={8,8,8,8,8,8,8,8,8,1,1,1,1,1,1,1,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5};
+	int Mindown[36]={5,5,5,5,5,5,5,5,5,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,3,3,3,4,4,4,4,4,4};
+	double A[36]={176.0575,177.0575,176.0575,177.9575,310.0021,311.9102,312.9102,314.9102,313.9102,
+					24.3891,118.9083,118.4576,118.9083,119.4576,117.7551,118.1083,81.8259,81.1364,81.298,81.6259,
+					217.8952,219.7752,218.335,216.7752,218.7752,216.7752,218.7752,143.0288,143.3179,143.5972,
+					259.131,259.649,260.176,260.576,261.176,260.076};
+	double B[36]={10.8416,10.8616,10.6616,10.9616,7.4921,7.5031,7.5121,7.5321,7.6121,25.5472,37.9637,37.777,37.9637,38.777,
+					37.551,37.6637,13.5073,13.3272,13.3538,13.4073,18,18.6,18.1,18.28,18.2,17.28,19.2,
+					10.7154,10.7367,10.7583,23,23.1,23.2,23.4,23.5,23.04};
+	double R[36]={0.0015,0.00153,0.00143,0.00163,0.00194,0.00195,0.00196,0.00197,0.00199,0.02533,0.01561,0.01359,0.01161,
+					0.01059,0.01199,0.01261,0.00962,0.00876,0.00895,0.00932,0.00623,0.00599,0.00612,0.00588,0.00598,
+					0.00578,0.00698,0.00473,0.00481,0.00487,0.00259,0.0026,0.00263,0.00264,0.00267,0.00261};
+	double Start[36]={500,500,500,500,800,800,800,800,800,0,30,30,30,30,30,30,80,80,80,80,
+						100,100,100,100,100,100,100,200,200,200,300,300,300,300,300,300};
+	double Rampup[36]={175,175,175,175,200,200,200,200,200,12,20,20,20,20,20,20,38,38,38,38,
+						50,50,50,50,50,50,50,77.5,77.5,77.5,98.5,98.5,98.5,98.5,98.5,98.5};
+	double Rampdown[36]={175,175,175,175,200,200,200,200,200,12,20,20,20,20,20,20,38,38,38,38,
+						50,50,50,50,50,50,50,77.5,77.5,77.5,98.5,98.5,98.5,98.5,98.5,98.5};
+	//Below are Ramp rate used in 2012 paper
+	//double Rampup[36]={170,170,170,170,100,100,100,100,100,3.2,5.33,5.33,5.33,5.33,5.33,20.27,20.27,20.27,20.27,
+		//				25,25,25,25,25,25,25,55.58,55.58,55.58,72.68,72.68,72.68,72.68,72.68,72.68,72.68};
+	//double Rampdown[36]={145,145,145,145,150,150,150,150,150,4.8,8,8,8,8,8,30.4,30.4,30.4,30.4,
+		//				37.5,37.5,37.5,37.5,37.5,37.5,37.5,60.375,60.375,60.375,74.025,74.025,74.025,74.025,74.025,74.025,74.025};
+	double Worst_wind[36]={181,124,193,135,120,125,162,147,135,2,44,83,62,52,86,10,91,11,52,14,56,1,77,85};
+
+	int IniSeq=0;
+	//IniSeq=0: Deterministic sequence initialization;
+	//IniSeq=1: Probabilistic sequence initialization;
+	//IniSeq=2: Random sequence initialization;
+	bool LP_ED=0;//switch to decide whether to use linear or quadratic cost function
+	bool DR_switch=1;//switch to decide whether including DR or not
+	bool Ramp_switch=1;
+	bool wind_switch=1;//switch to decide whether including wind or not
+	bool Deterministic_Worst_Wind=0;//to decide whether to use the static worst wind data
+	int Num_Unit=36;//number of units
+	int Num_Base=9;//number of base units
+	int T=24;
+	//CRO Test 
+	int LoopTime=5;
+	double buffer=0; 
+    double GlobalIniKE=40000;
+    double KElossrate=0.8, Molecoll=0.05;
+	int FEmax=5000;
+	int InitialPopulation=5;
+	double Beta=GlobalIniKE/20;
+	int Alpha=(FEmax/10)/InitialPopulation;//more P, less alpha.
+	double Sigma = 3;
+	double Sigma0 = Sigma;
+	double e=2.7182818;
+	double OriEpsilon=5000;//aimmed difference between UB and LB
+	
+    //int Iterations=2000;
+	
+	double GlobalMinimum;
+	double GlobalFuel,GlobalStart;
+	//double GlobalMinResult[24][10]={0};
+	//int GlobalStatus[24][10];
+	//int GlobalSequence[8];
+	double **GlobalMinResult;
+	int **GlobalStatus;
+	int *GlobalSequence;
+	double GlobalProfit;
+	double Globalworstwind;
+	int *Globalpricelevel;
+	double GlobalPenalty;
+	
+	double converge[3000]={0};
+	int counter=0;
+
+	//---------------------------------
+	//wind power parameters:
+	double WindMin[24]={50,22,57,12,67,60,6,6,15,2,44,83,62,52,86,10,91,11,52,14,56,1,77,85};
+	double WindMax[24]={181,124,193,135,120,125,162,147,135,183,159,155,192,129,176,175,138,159,108,105,153,178,193,113};
+	double windMolecoll=0.1;
+	double windGlobalIniKE=100;
+	int windFEmax=5000;
+	int windInitialPopulation=3;
+	int windP=3;//this is variable in Decom and Synthesiss
+	double windBeta=windGlobalIniKE/20;
+	int windAlpha=(windFEmax/10)/windInitialPopulation;//more P, less alpha.
+	double windSigmaOriginal=5;
+	double windSigma=windSigmaOriginal;
+	double windbuffer=0;
+	double WorstWindCostInIteration=0;
+
+	//budget constraint coefficients to define the uncertainty set of wind power
+	double BCcoefficient[4]={0.4,0.8,0.2,0.6};
+
+	//number of intervals into which the whole time horizon is divided
+	int Num_BudgetConstraints=4;
+	//end of wind parameters
+	//----------------------------------
+
+	//-------------------------------------
+	//Demand response given parameters:
+	
+	//original demand curve given as DBase[24]
+	//price elasticity of demand matrix: [24][24]
+	//read from ReadMatrix function
+	double Prices[10]={10.5,12,13.5,15,16.5,18,19.5,21,22.5,24};
+	double PtoD[10]={1.075,1.045,1.02,1,0.975,0.953,0.933,0.915,0.9,0.887};
+	//-------------------------------------
+
+class generator
+{
+public:
+	double Pout;
+	double Pmax;
+	double Pmin;//active power output; max&min power limitation
+	int minup;
+	int mindown;//minimum up and down time
+	double rampup;
+	double rampdown;//ramp up and down rate
+	double start;
+	int duration;
+	int initials;//initial status
+	double a,b,r;//economic coeifficients
+};
+
+class Molecule
+{
+public:
+	int *Sequence;
+	double KE;//NG-1
+	double PE;//NG-2
+	int *NumHit;
+	int *MinHit;
+	int *PriceLevel;//to implement the DR formulation
+};
+
+class WindMolecule
+{
+public:
+	double *WindPower;
+	double windPE;
+	double windKE;
+	int *windNumHit;
+	int *windMinHit;
+};
+
+//Used to read elasticity matrix information
+void ReadMatrix(double** EM)
+{
+	ifstream fin("Input/elasticitymatrix.txt");
+	string str;
+	double strdouble;
+	for (int i=0;i<T;i++)
+	{
+		for (int j=0;j<T;j++)
+		{
+			fin >>str;
+			//force convertion from string to char then to double
+			strdouble =  atof(const_cast<const char *>(str.c_str())); 
+			EM[i][j] = strdouble; //*2.37 to get a similar results claimed in the cited paper
+		}
+	}
+}
+
+//used to update the load curve according to the responsive load DR and the given incentive price
+void LoadCurveUpdatebyDR(int *pricelevel, double *Din, double *Dout)
+{
+	if (DR_switch==1)
+	{
+		//updating D according to price levels
+		for (int t=0;t<T;t++)
+		{
+			Dout[t]=Din[t]*PtoD[pricelevel[t]];
+		}
+	}
+	else
+	{
+		
+	}
+}
+
+double Sump(generator* gen)//double calcTotalPower
+{
+	int sump=0;
+	for (int q=0;q<Num_Unit;q++)
+	{
+		sump=sump+gen[q].Pout;
+	}
+
+	return sump;
+}
+
+double RandomGen(double min, double max)
+{
+       int Min = (int)(min*1000000);
+       int Max = (int)(max*1000000);
+       int Rand = rand()*rand();
+       
+       int Result = Rand%(Max-Min)+Min;
+       
+       return Result/1000000.0; 
+}
+
+double GaussRandomGen(double miu, double sigma)
+{
+    static double V1, V2, S;
+    static int phase = 0;
+    double X;
+     
+    if ( phase == 0 ) {
+        do {
+            double U1 = (double)rand() / RAND_MAX;
+            double U2 = (double)rand() / RAND_MAX;
+             
+            V1 = 2 * U1 - 1;
+            V2 = 2 * U2 - 1;
+            S = V1 * V1 + V2 * V2;
+        } while(S >= 1 || S == 0);
+         
+        X = V1 * sqrt(-2 * log(S) / S);
+    } else
+        X = V2 * sqrt(-2 * log(S) / S);
+         
+    phase = 1 - phase;
+	
+	X=X*sigma+miu;
+    return X;
+}
+
+void Genstatusset1(int *genseq, int **genstatus, generator *gen, double *D)
+{
+	//base unit preset to 1
+	for (int i=0;i<T;i++)
+	{
+		for (int j=0;j<Num_Base;j++)
+		{
+			genstatus[i][j]=1;
+		}
+	}
+
+	//or only when the required power output is less than "changing point", we use
+	//deterministic sequence assigning unit 6 with highest priority.
+	for (int t=0;t<T;t++)
+	{
+		double sum=0;
+		for (int a=0;a<Num_Unit;a++)
+		{
+			sum=sum+gen[a].Pmax*genstatus[t][a];
+		}
+		
+		for (int u=0;u<Num_Unit-Num_Base;u++)
+		{
+			if (wind_switch==0)
+			{
+				if (sum<D[t]+SR[t])
+				{
+					genstatus[t][genseq[u]-1]=1;
+					sum+=gen[genseq[u]-1].Pmax;
+				}
+			}
+			else 
+			{
+				if (sum<D[t])
+				{
+					genstatus[t][genseq[u]-1]=1;
+					sum+=gen[genseq[u]-1].Pmax;
+				}
+			}
+		}
+	}
+	for (int t=0;t<T-1;t++)
+	{
+		double sumb=0;
+		int sums=0;
+		for (int a=0;a<Num_Base;a++)
+		{
+			sumb=sumb+gen[a].Pmax*genstatus[t][a];
+		}
+		for (int a=0;a<Num_Unit;a++)
+		{
+			sums=sums+genstatus[t][a];
+		}
+		
+		if (wind_switch==0)
+		{
+			if ((D[t]+SR[t]>sumb)&&((D[t]+SR[t]-sumb)<gen[5-1].Pmax)&&(genstatus[t][6-1]==0)
+				&&(sums==2*Num_Unit/10+1))
+			{
+				//cout<<"affected t: "<<t<<endl;
+				for (int u=0;u<Num_Unit-Num_Base;u++)
+				{
+					if ((genstatus[t][u]==1)&&(genstatus[t+1][u]==0)&&(u!=6-2+1))
+					{
+						genstatus[t][u]=0;
+						genstatus[t][6-1]=1;
+					}
+				}
+			}
+		}
+		else
+		{
+			if ((D[t]>sumb)&&((D[t]-sumb)<gen[5-1].Pmax)&&(genstatus[t][6-1]==0)
+				&&(sums==2*Num_Unit/10+1))
+			{
+				//cout<<"affected t: "<<t<<endl;
+				for (int u=0;u<Num_Unit-Num_Base;u++)
+				{
+					if ((genstatus[t][u]==1)&&(genstatus[t+1][u]==0)&&(u!=6-2+1))
+					{
+						genstatus[t][u]=0;
+						genstatus[t][6-1]=1;
+					}
+				}
+			}
+		}
+		//getchar();
+	}
+
+	//----------------------------
+	//set other 0(not preset) positions
+	for (int k=0;k<Num_Unit-Num_Base;k++)
+	{
+		int duration=gen[genseq[k]-1].duration;
+		for (int i=0;i<T;i++)
+		{
+			//if the status has been preset
+			if (genstatus[i][genseq[k]-1]==1)
+			{
+				if (duration>0)
+				{
+					duration=duration+1;
+				}
+				else
+				{
+					duration=1;
+				}
+			}
+			//no preset to 1
+			else //if (genstatus[i][genseq[k]-1]==0)
+			{
+				// if MUT/MDT not satisfied
+				if ((duration>0)&&(duration<gen[genseq[k]-1].minup))
+				{
+					genstatus[i][genseq[k]-1]=1;
+					duration=duration+1;
+				}				
+				else if ((duration>0)&&(duration>=gen[genseq[k]-1].minup))
+				{
+					int tem=0;
+					if ((i+gen[genseq[k]-1].mindown)<T)
+					{
+						for (int j=i;j<i+gen[genseq[k]-1].mindown;j++)
+						{
+							tem=tem+genstatus[j][genseq[k]-1];
+						}
+						if (tem!=0)
+						{
+							genstatus[i][genseq[k]-1]=1;
+							duration=duration+1;
+						}
+						else//tem==0
+						{
+							duration=-1;
+						}
+					}
+					else//current time+MDT>=T
+					{
+						genstatus[i][genseq[k]-1]=0;
+						duration=-1;
+					}
+				}
+				else //(duration<0) no matter <or> MDT//((duration<0)&&((-duration)<gen[genseq[k]-1].minup))
+				{
+					genstatus[i][genseq[k]-1]=0;
+					duration=duration-1;
+				}
+			}
+		}
+	}
+}
+
+double Fuelcost(generator *gen, double **genresult)
+{
+	double fuelcost=0;
+	for (int i=0;i<Num_Unit;i++)//unit
+	{
+		//double cost=0;
+		for (int j=0;j<T;j++)//timesq
+		{
+			if (genresult[j][i]!=0)
+			{
+				if (LP_ED==1)
+				{
+					fuelcost=fuelcost+genresult[j][i]*FC[i]+RC[i];
+				}
+				else
+				{
+					fuelcost=fuelcost+genresult[j][i]*gen[i].b+genresult[j][i]*genresult[j][i]*gen[i].r+gen[i].a;
+				}
+				//cout<<fuelcost<<endl;
+				//getchar();
+			}
+		}
+	}
+
+	return fuelcost;
+}
+
+double Startcost(generator *gen, int **genstatus)
+{
+	double startcost=0;
+	for (int i=0;i<Num_Unit;i++)
+	{
+		int gens=gen[i].initials;
+		for (int j=0;j<T;j++)
+		if((gens<0)&&(genstatus[j][i]==1))
+		{
+			startcost=startcost+gen[i].start;
+			gens=1;
+		}
+		else if((gens<0)&&(genstatus[j][i]==0))
+		{
+			gens=gens-1;
+		}
+		else if((gens>0)&&(genstatus[j][i]==1))
+		{
+			gens=gens+1;//gen[i].initials+1;
+		}
+		else //if ((gens>0)&&(genstatus[j][i]==0))
+		{
+			gens=-1;
+		}
+	}
+
+	return startcost;
+}
+
+//return absolute value
+double ABS(double a)
+{
+	if (a<0)
+	{
+		return -a;
+	}
+	else
+	{
+		return a;
+	}
+}
+
+double SumLambdaPower(generator* gen, double J, double*D, int time, int **genstatus, double **genresult)
+{
+	double Sum=0;
+	double Result=0;
+	for (int i=0;i<Num_Unit;i++)
+	{
+		if (genstatus[time][i]==1)
+		{
+			double oSum=Sum;
+			double pmin=0;
+			double pmax=0;
+			if (Ramp_switch==1)
+			{
+				if (time>0)
+				{
+					if (gen[i].Pmin>genresult[time-1][i]-Rampdown[i])
+					{
+						pmin=gen[i].Pmin;
+					}
+					else
+					{
+						pmin=genresult[time-1][i]-Rampdown[i];
+					}
+					if (gen[i].Pmax<genresult[time-1][i]+Rampup[i])
+					{
+						pmax=gen[i].Pmax;
+					}
+					else
+					{
+						pmax=genresult[time-1][i]+Rampup[i];
+					}
+				}
+				else
+				{
+					pmin=gen[i].Pmin;
+					pmax=gen[i].Pmax;
+				}
+			}
+			else
+			{
+				pmin=gen[i].Pmin;
+				pmax=gen[i].Pmax;
+			}
+			//if ((J-gen[i].b)/(2*gen[i].r)<gen[i].Pmin)
+			if ((J-gen[i].b)/(2*gen[i].r)<pmin)
+			{
+				//Sum=Sum+gen[i].Pmin;
+				Sum=Sum+pmin;
+			}
+			//else if ((J-gen[i].b)/(2*gen[i].r)>gen[i].Pmax)
+			else if ((J-gen[i].b)/(2*gen[i].r)>pmax)
+			{
+				//Sum=Sum+gen[i].Pmax;
+				Sum=Sum+pmax;
+			}
+			else
+			{
+				Sum=Sum+(J-gen[i].b)/(2*gen[i].r);
+			}
+		}
+	}
+	Result=Sum-D[time];
+	return Result;
+}
+
+void PowerdispatchLambda(generator* gen, int **genstatus, double *D, double **genresult)
+{
+	for (int i=0;i<T;i++)//time
+	{
+		double Error=0.0000005;
+		double Jlow=0;
+		double Jhigh=40;
+		double Jmean;
+		while (ABS(Jhigh-Jlow)>Error)
+		{
+			Jmean=(Jlow+Jhigh)/2;
+			if(SumLambdaPower(gen,Jmean,D,i,genstatus,genresult)>0)
+			{
+				Jhigh=Jmean;
+			}
+			else
+			{
+				Jlow=Jmean;
+			}
+		}
+
+		for (int j=0;j<Num_Unit;j++)//unit
+		{
+			if (genstatus[i][j]==1)
+			{
+				double pmin=0;
+				double pmax=0;
+				if (Ramp_switch==1)
+				{
+					if (i>0)
+					{
+						if (gen[j].Pmin>genresult[i-1][j]-Rampdown[j])
+						{
+							pmin=gen[j].Pmin;
+						}
+						else
+						{
+							pmin=genresult[i-1][j]-Rampdown[j];
+						}
+						if (gen[j].Pmax<genresult[i-1][j]+Rampup[j])
+						{
+							pmax=gen[j].Pmax;
+						}
+						else
+						{
+							pmax=genresult[i-1][j]+Rampup[j];
+						}
+					}
+					else
+					{
+						pmin=gen[j].Pmin;
+						pmax=gen[j].Pmax;
+					}
+				}
+				else
+				{
+					pmin=gen[j].Pmin;
+					pmax=gen[j].Pmax;
+				}
+				//if ((Jmean-gen[j].b)/(2*gen[j].r)<gen[j].Pmin)
+				if ((Jmean-gen[j].b)/(2*gen[j].r)<pmin)
+				{
+					//genresult[i][j]=gen[j].Pmin;
+					genresult[i][j]=pmin;
+				}
+				//else if ((Jmean-gen[j].b)/(2*gen[j].r)>gen[j].Pmax)
+				else if ((Jmean-gen[j].b)/(2*gen[j].r)>pmax)
+				{
+					//genresult[i][j]=gen[j].Pmax;
+					genresult[i][j]=pmax;
+				}
+				else
+				{
+					genresult[i][j]=(Jmean-gen[j].b)/(2*gen[j].r);
+				}
+
+				//check ramp rate
+				/*if ((i!=0)&&(j!=Num_Unit-1))
+				{
+					if (genresult[i][j]>genresult[i-1][j]+gen[j].rampup)
+					{
+						genresult[i][j]=genresult[i-1][j]+gen[j].rampup;
+					}
+					else if (genresult[i][j]<genresult[i-1][j]-gen[j].rampdown)
+					{
+						genresult[i][j]=genresult[i-1][j]-gen[j].rampdown;
+					}
+				}
+				else if ((i!=0)&&(j==Num_Unit-1))
+				{
+					if ((genresult[i][j]>genresult[i-1][j]+gen[j].rampup)
+						||(genresult[i][j]<genresult[i-1][j]-gen[j].rampdown))
+					{
+						cout<<"Ramp Rate violated at t="<<i<<endl;
+						break;
+					}
+				}*/
+			}
+			else
+			{
+				genresult[i][j]=0;
+			}
+		}
+	}
+}
+
+double PowerdispatchLP(int **genstatus, double *D, double **genresult)
+{
+	double EDresult=0;
+
+	for (int t=0;t<T;t++)
+	{
+		double optimum=0;
+		try {
+		GRBEnv env = GRBEnv();
+		env.set(GRB_IntParam_OutputFlag, 0); 
+		GRBModel model = GRBModel(env);
+		
+		GRBVar *var=new GRBVar[Num_Unit];
+		// Create variables
+		for (int i=0;i<Num_Unit;i++)
+		{
+			char temp[10];
+			sprintf(temp,"p%d",i);
+			var[i] = model.addVar(Pmin[i]*genstatus[t][i],Pmax[i]*genstatus[t][i], 0, GRB_CONTINUOUS, temp);
+
+		}
+
+		model.update();
+
+		// Set objective: maximize x + y + 2 z
+		GRBLinExpr objective=0;
+		GRBLinExpr pbalance=0;
+		for (int i=0;i<Num_Unit;i++)
+		{
+			if (genstatus[t][i]==1)
+			{
+				objective+=(var[i]*FC[i]+RC[i]);
+				pbalance+=var[i]*genstatus[t][i];
+			}
+			else
+			{
+				
+			}
+		}
+		model.setObjective(objective, GRB_MINIMIZE);
+
+		// Add constraint: x + 2 y + 3 z <= 4
+	
+		model.addConstr(pbalance,GRB_EQUAL,D[t], "balance");
+
+		// Optimize model
+
+		model.optimize();
+		for (int i=0;i<Num_Unit;i++)
+		{
+			 //cout << var[i].get(GRB_StringAttr_VarName) << " "
+		 	 //<< var[i].get(GRB_DoubleAttr_X) << endl;
+			 genresult[t][i]=var[i].get(GRB_DoubleAttr_X);
+		}
+
+		//cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
+
+		EDresult+=model.get(GRB_DoubleAttr_ObjVal);
+		delete []var;
+
+		} catch(GRBException e) {
+		//cout << "Error code = " << e.getErrorCode() << endl;
+		//cout << e.getMessage() << endl;
+		} catch(...) {
+		//cout << "Exception during optimization" << endl;
+		}
+
+		//check LP ED results:
+		/*for(int i=0;i<Num_Unit;i++)
+		{
+			cout<<genstatus[t][i]<<" ";
+		}
+		cout<<endl;
+		for(int i=0;i<Num_Unit;i++)
+		{
+			cout<<genresult[t][i]<<" ";
+		}
+		cout<<endl;
+		for(int i=0;i<Num_Unit;i++)
+		{
+			cout<<FC[i]<<" ";
+		}
+		cout<<endl;
+		for(int i=0;i<Num_Unit;i++)
+		{
+			cout<<RC[i]<<" ";
+		}
+		cout<<endl;
+		getchar();*/
+	}
+	
+	return EDresult;
+}
+
+//------------------------------------------------------------------------------------
+//wind functions
+
+//Given a status matrix, return the corresponding cost
+double MatrixToCost(double *tempwind, int** Matrix, int *pricelevel)//, int* D, int NumberofBaseUnit, int* priority, int* Pmax,int* Pmin,int* Preduation,
+				   //int* Minup,int* Mindown,double* A,double* B, double* R,double* Hstart,double* Cstart,int* coldstarthr)
+{
+	generator *gen=new generator[Num_Unit];//initial units
+	for (int q=0;q<Num_Unit;q++)
+	{
+		gen[q].Pmax=Pmax[q];
+		gen[q].Pmin=Pmin[q];
+		gen[q].initials=Preduation[q];
+		gen[q].minup=Minup[q];
+		gen[q].mindown=Mindown[q];
+		gen[q].duration=Preduation[q];
+		gen[q].a=A[q];
+		gen[q].b=B[q];
+		gen[q].r=R[q];
+		gen[q].start=Start[q];
+	}//input active power limitation
+	
+	double FinalResult;
+
+	double **Tempgenresult=new double*[T];
+	for (int i=0;i<T;i++)
+	{
+		Tempgenresult[i]=new double[Num_Unit];
+	}
+
+	for (int i=0;i<T;i++)
+	{
+		for (int j=0;j<Num_Unit;j++)
+			{
+				Tempgenresult[i][j]=0;
+			}
+	}
+	
+	double *D=new double[T];
+	for (int t=0;t<T;t++)
+	{
+		D[t]=DBase[t];
+	}
+	if (DR_switch==1)
+	{
+		for (int t=0;t<T;t++)
+		{
+			D[t]=DBase[t]*PtoD[pricelevel[t]];
+		}
+	}
+	if (wind_switch==1)
+	{
+		for (int t=0;t<T;t++)
+		{
+			D[t]=DBase[t]*PtoD[pricelevel[t]]-tempwind[t];
+		}
+	}
+	
+	//FeasibleSolutionEnd=clock();
+	//long FeasibleSolution=(FeasibleSolutionEnd-FeasibleSolutionStart)/1000;
+	PowerdispatchLambda(gen,Matrix,D,Tempgenresult);
+
+	//Incentive to record the incentive paid to customers' actively power curtailment
+	//Income to record with the set electricity price, the power company's income
+	double TotalCost,FuelCost,StartCost;
+	FuelCost=Fuelcost(gen,Tempgenresult);
+	StartCost=Startcost(gen,Matrix);
+	TotalCost=FuelCost+StartCost;
+
+	FinalResult=TotalCost;
+	
+	for (int i=0;i<T;i++)
+	{
+		delete []Tempgenresult[i];
+	}
+	delete []Tempgenresult;
+	delete []gen;
+	delete []D;
+
+	return FinalResult;
+}
+
+void windGaussneighbor_binary(double *windIn, double *windOut, double *budget)
+{
+	
+	//binary search, randomly pick one bit and change it from min->max or max->min
+	int rand_bit=rand()%(T);
+	for (int t=0;t<T;t++)
+	{
+		windOut[t]=windIn[t];
+	}
+
+	int checksum=0;
+		//cout<<"In while"<<endl;
+		checksum=0;
+		rand_bit=rand()%(T);
+		double temp_wind=windIn[rand_bit];
+		if (windIn[rand_bit]==WindMin[rand_bit])
+		{
+			windOut[rand_bit]=WindMax[rand_bit];
+		}
+		else if (windIn[rand_bit]==WindMax[rand_bit])
+		{
+			windOut[rand_bit]=WindMin[rand_bit];
+		}
+
+		for (int j=0;j<Num_BudgetConstraints;j++)
+		{
+			double windsum=0;
+			for (int k=j*(T/Num_BudgetConstraints);k<j*(T/Num_BudgetConstraints)+int(T/Num_BudgetConstraints);k++)
+			{
+				windsum+=windOut[k];
+			}
+			if (windsum>=budget[j])
+			{
+				checksum++;			
+			}
+			else
+			{
+				
+			}
+		}
+		if (checksum!=4)
+		{
+			for (int t=0;t<T;t++)
+			{
+				windOut[t]=windIn[t];
+			}
+		}	
+}
+
+void windGaussneighbor(double *windIn, double *windOut, double *budget)
+{
+	for (int i=0;i<T;i++)
+	{
+		windOut[i]=GaussRandomGen(windIn[i],windSigma);
+		if (windOut[i]<WindMin[i])
+		{
+			windOut[i]=WindMin[i];
+		}
+		else if (windOut[i]>WindMax[i])
+		{
+			windOut[i]=WindMax[i];
+		}
+	}
+
+	for (int j=0;j<Num_BudgetConstraints;j++)
+	{
+		double windsum=0;
+		for (int k=j;k<j+int(T/Num_BudgetConstraints);k++)
+		{
+			windsum+=windOut[k];
+		}
+		while (windsum<budget[j])
+		{
+			for (int t=j;t<j+int(T/Num_BudgetConstraints);t++)
+			{
+				windOut[t]=GaussRandomGen(windIn[t],windSigma);
+				if (windOut[t]<WindMin[t])
+				{
+					windOut[t]=WindMin[t];
+				}
+				else if (windOut[t]>WindMax[t])
+				{
+					windOut[t]=WindMax[t];
+				}
+			}
+
+			for (int k=j;k<j+int(T/Num_BudgetConstraints);k++)
+			{
+				windsum+=windOut[k];
+			}
+		}
+		
+	}
+}
+
+void windCROonwall(WindMolecule *W, int *M, int *fe, double *budget, int **genstatus, int *pricelevel)
+{
+	double *windtemp=new double[T];
+	//double *D=new double[T];
+	double PEresult;
+	double Energyjudge=0;//to judge whether the reation will happen
+	double q;//a random number between 0 and 1
+	//for (int t=0;t<T;t++)
+	//{
+	//	D[t]=DBase[t];
+	//}
+
+	windGaussneighbor_binary(W[M[0]].WindPower,windtemp,budget);
+	
+	PEresult=-MatrixToCost(windtemp,genstatus,pricelevel);
+
+	fe[0]++;//updating function evaluation time
+	W[M[0]].windNumHit++;
+	Energyjudge=W[M[0]].windPE+W[M[0]].windKE-PEresult;
+
+	if (Energyjudge>=0)//onwall happens
+	{
+		q=RandomGen(KElossrate,1);
+		W[M[0]].windKE=Energyjudge*q;
+		W[M[0]].windPE=PEresult;
+		windbuffer=windbuffer+Energyjudge*(1-q);
+		
+		//update the solution information
+		for (int i=0;i<T;i++)
+		{
+			W[M[0]].WindPower[i]=windtemp[i];
+		}
+
+		W[M[0]].windMinHit=W[M[0]].windNumHit;
+		//Onwallcounter++;
+	}
+
+	delete []windtemp;
+	//delete []D;
+}
+
+void windCROdecomposition(WindMolecule *W, int *M, bool *J, int *fe, double *budget, int **genstatus, int *pricelevel)
+{
+	if ((W[M[0]].windNumHit-W[M[0]].windMinHit<=windAlpha)||(windP==windInitialPopulation))
+	{
+		return;
+	}
+
+	double *windtemp1=new double[T];
+	double *windtemp2=new double[T];
+	//double *D1=new double[T];
+	//double *D2=new double[T];
+	double KEresult1,KEresult2,PEresult1,PEresult2;
+	double Energyjudge=0;//to decide whether the decom will happen
+	double k=0;//a random number between 0 and 1 to update energies
+
+	windGaussneighbor_binary(W[M[0]].WindPower,windtemp1,budget);
+	windGaussneighbor_binary(W[M[0]].WindPower,windtemp2,budget);
+	//for (int t=0;t<T;t++)
+	//{
+	//	D1[t]=DBase[t]-windtemp1[t];
+	//	D2[t]=DBase[t]-windtemp2[t];
+	//}
+
+	PEresult1=-MatrixToCost(windtemp1,genstatus,pricelevel);
+	PEresult2=-MatrixToCost(windtemp2,genstatus,pricelevel);
+	fe[0]+=2;
+
+	//Energyjudge=cro.PE[M[0]]+cro.KE[M[0]]-PEresult1-PEresult2;
+	Energyjudge=W[M[0]].windPE+W[M[0]].windKE-PEresult1-PEresult2;
+
+	if (Energyjudge>=0)
+	{
+		J[0]=1;//update the judger, the decom happens
+		k=RandomGen(0,1);
+		KEresult1=W[M[0]].windKE*k;
+		KEresult2=W[M[0]].windKE*(1-k);
+
+		windP++;
+		//to prevent overheading
+		if (windP>=windInitialPopulation*2)
+		{
+			cout<<"warning!! Population size has been doubled!"<<endl;
+			cout<<"Current FE: "<<fe;
+			getchar();
+			exit(0);
+		}
+		//update solution space
+		for (int i=0;i<T;i++)
+		{
+			W[M[0]].WindPower[i]=windtemp1[i];
+			W[windP-1].WindPower[i]=windtemp2[i];
+		}
+		W[M[0]].windKE=KEresult1;
+		W[windP-1].windKE=KEresult2;
+		W[M[0]].windPE=PEresult1;
+		W[windP-1].windPE=PEresult2;
+
+		W[M[0]].windNumHit=0;
+		W[windP-1].windNumHit=0;
+		W[M[0]].windMinHit=0;
+		W[windP-1].windMinHit=0;
+		//Decomcounter++;
+	}
+	else if (Energyjudge+buffer>=0)
+	{
+		J[0]=1;//update the judger, the decom happens
+		double m1,m2,m3,m4;
+		m1=RandomGen(0,1);
+		m2=RandomGen(0,1);
+		m3=RandomGen(0,1);
+		m4=RandomGen(0,1);
+		KEresult1=(Energyjudge+windbuffer)*m1*m2;
+		KEresult2=(Energyjudge+windbuffer-KEresult1)*m3*m4;
+		windbuffer=windbuffer+Energyjudge-KEresult1-KEresult2;
+
+		windInitialPopulation++;
+		//to prevent overheading
+		if (windP>=windP*2)
+		{
+			cout<<"warning!! Population size has been doubled!";
+			getchar();
+			exit(0);
+		}
+
+		for (int i=0;i<T;i++)
+		{
+			W[M[0]].WindPower[i]=windtemp1[i];
+			W[windP-1].WindPower[i]=windtemp2[i];
+		}
+		W[M[0]].windKE=KEresult1;
+		W[windP-1].windKE=KEresult2;
+		W[M[0]].windPE=PEresult1;
+		W[windP-1].windPE=PEresult2;
+
+		W[M[0]].windNumHit=0;
+		W[windP-1].windNumHit=0;
+		W[M[0]].windMinHit=0;
+		W[windP-1].windMinHit=0;
+	}
+	else
+	{
+		J[0]=0;
+	}
+
+	delete []windtemp1;
+	delete []windtemp2;
+	//delete []D1;
+	//delete []D2;
+}
+
+void windCROintermolecularcollision(WindMolecule *W, int *M, int *fe, double *budget, int **genstatus, int *pricelevel)
+{
+	double *windtemp1=new double[T];
+	double *windtemp2=new double[T];
+	//double *D1=new double[T];
+	//double *D2=new double[T];
+	double KEresult1, KEresult2, PEresult1, PEresult2;
+	double Energyjudge=0;
+	double p;//random number between 0,1
+
+	windGaussneighbor_binary(W[M[0]].WindPower,windtemp1,budget);
+	windGaussneighbor_binary(W[M[1]].WindPower,windtemp2,budget);
+	//for (int t=0;t<T;t++)
+	//{
+	//	D1[t]=DBase[t]-windtemp1[t];
+	//	D2[t]=DBase[t]-windtemp2[t];
+	//}
+	PEresult1=-MatrixToCost(windtemp1,genstatus,pricelevel);
+	PEresult2=-MatrixToCost(windtemp2,genstatus,pricelevel);
+	
+	fe[0]+=2;
+	W[M[0]].windNumHit++;
+	W[M[1]].windNumHit++;
+	Energyjudge=(W[M[0]].windPE+W[M[0]].windKE+W[M[1]].windPE+W[M[1]].windKE)-(PEresult1+PEresult2);
+
+	if (Energyjudge>=0)
+	{
+		p=RandomGen(0,1);
+		KEresult1=Energyjudge*p;
+		KEresult2=Energyjudge*(1-p);
+
+		for (int i=0;i<T;i++)
+		{
+			W[M[0]].WindPower[i]=windtemp1[i];
+			W[M[1]].WindPower[i]=windtemp2[i];
+		}
+		W[M[0]].windKE=KEresult1;
+		W[M[1]].windKE=KEresult2;
+		W[M[0]].windPE=PEresult1;
+		W[M[1]].windPE=PEresult2;
+
+		W[M[0]].windMinHit=W[M[0]].windNumHit;
+		W[M[1]].windMinHit=W[M[1]].windNumHit;
+		//Intercounter++;
+	}
+
+	delete []windtemp1;
+	delete []windtemp2;
+	//delete []D1;
+	//delete []D2;
+}
+
+void windCROsynthesis(WindMolecule *W, int *M, bool *J, int *fe, double *budget, int **genstatus, int *pricelevel)
+{
+	if ((W[M[0]].windKE>=windBeta)||(W[M[1]].windKE>=windBeta))
+	{
+		return;
+	}
+
+	double *windtemp=new double[T];
+	//double *D=new double[T];
+	double KEresult,PEresult;
+	double Energyjudge=0;
+
+	//synthesis operator:
+	for (int i=0;i<T;i++)
+	{
+		double p=RandomGen(0,1);
+		if (p<0.5)
+		{
+			windtemp[i]=W[M[0]].WindPower[i];
+		}
+		else
+		{
+			windtemp[i]=W[M[1]].WindPower[i];
+		}
+	}
+	//for (int t=0;t<T;t++)
+	//{
+	//	D[t]=DBase[t]-windtemp[t];
+	//}
+	
+	PEresult=-MatrixToCost(windtemp,genstatus,pricelevel);
+	
+	fe[0]++;
+	Energyjudge=W[M[0]].windPE+W[M[0]].windKE+W[M[1]].windPE+W[M[1]].windKE-PEresult;
+	//Synreduce to reduce the possibility of a synthesis
+
+	if (Energyjudge>=0)
+	{
+		J[0]=1;
+		KEresult=Energyjudge;
+		
+		//copy the resultant molecule to the solution set
+		for (int i=0;i<T;i++)
+		{
+			W[M[0]].WindPower[i]=windtemp[i];
+		}
+		W[M[0]].windPE=PEresult;
+		W[M[0]].windKE=KEresult;
+
+		//reduce the other reactant molecule from the solution set
+		for (int p=M[1]+1;p<windP;p++)
+		{
+			for (int n=0;n<T;n++)
+			{
+				W[p-1].WindPower[n]=W[p].WindPower[n];
+			}
+			W[p-1].windKE=W[p].windKE;
+			W[p-1].windPE=W[p].windPE;
+		}
+
+		windP--;
+		W[M[0]].windMinHit=0;
+		W[M[0]].windNumHit=0;
+		//Syncounter++;
+	}
+
+	delete []windtemp;
+	//delete []D;
+}
+
+void FindWorstWind_binary(int **genstatus, double *worst_wind_output, int *pricelevel)//(int **genstatus, double *D)
+{
+	//initial the budget information for constraint handling
+	double *Budget=new double[Num_BudgetConstraints];
+	for (int i=0;i<Num_BudgetConstraints;i++)
+	{
+		Budget[i]=0;
+
+		//multiple uncertainty budget constraints are used here
+		for (int t=0;t<int(T/Num_BudgetConstraints);t++)
+		{
+			Budget[i]+=BCcoefficient[i]*(WindMin[t]+(T/Num_BudgetConstraints)*i)
+				+(1-BCcoefficient[i])*(WindMax[t]+((T/Num_BudgetConstraints)*i));
+		}
+	}
+
+	WindMolecule *wind=new WindMolecule[windInitialPopulation*5];
+	for (int i=0;i<windInitialPopulation;i++)
+	{
+		wind[i].WindPower=new double[T];
+		for (int t=0;t<T;t++)
+		{
+			/*wind[i].WindPower[t]=RandomGen(WindMin[t],WindMax[t]);
+			if (wind[i].WindPower[t]<WindMin[t])
+			{
+				wind[i].WindPower[t]=WindMin[t];
+			}
+			else if (wind[i].WindPower[t]>WindMax[t])
+			{
+				wind[i].WindPower[t]=WindMax[t];
+			}*/
+			
+			//binary wind power:
+			double windrand=RandomGen(0,1);
+			if (windrand<0.5)
+			{
+				wind[i].WindPower[t]=WindMin[t];
+			}
+			else
+			{
+				wind[i].WindPower[t]=WindMax[t];
+			}
+		}
+		//handling budget constraints
+		for (int j=0;j<Num_BudgetConstraints;j++)
+		{
+			double windsum=0;
+			for (int k=j;k<j+int(T/Num_BudgetConstraints);k++)
+			{
+				windsum+=wind[i].WindPower[k];
+			}
+			while (windsum<Budget[j])
+			{
+				for (int t=j;t<j+int(T/Num_BudgetConstraints);t++)
+				{
+					double windrand=RandomGen(0,1);
+					if (windrand<0.5)
+					{
+						wind[i].WindPower[t]=WindMin[t];
+					}
+					else
+					{
+						wind[i].WindPower[t]=WindMax[t];
+					}
+				}
+				for (int k=j;k<j+int(T/Num_BudgetConstraints);k++)
+				{
+					windsum+=wind[i].WindPower[k];
+				}
+			}
+		}
+		
+		//update D and calculate PE:
+		//for (int t=0;t<T;t++)
+		//{
+		//	Dwind[t]=DBase[t]-wind[i].WindPower[t];
+		//}
+		wind[i].windPE=-MatrixToCost(wind[i].WindPower,genstatus,pricelevel);
+		wind[i].windKE=windGlobalIniKE;
+	}
+	
+	//Update D according to wind power and the given genstatus
+	
+	int windfe[1];
+	windfe[0]=0;
+	
+	//Here is a simple optimization process that find the maximized generation cost
+	//with wind power as a control variable
+	bool *J=new bool[1];
+	int *M=new int[2];
+	int *Population=new int[1];
+	Population[0]=windInitialPopulation;
+	windbuffer=0;
+	windP=windInitialPopulation;
+	double worstwindcost=0;
+	WorstWindCostInIteration=worstwindcost;
+	double *worstwind=new double[T];
+	windSigma=windSigmaOriginal;
+
+	//----------------------------------
+	//start search
+	while(windfe[0]<windFEmax)
+	{
+		//cout<<windfe[0]<<endl;
+		//windSigma=windSigma-windSigma*(windfe/windFEmax);
+		J[0]=0;
+		double Judge=RandomGen(0,1.0);
+		//single molecular reactions
+		if ((Judge>windMolecoll)||(windP==1)) //single molecule reaction happen
+		{
+			M[0]=rand()%(windP);//randomly pick one solution from the population
+			windCROdecomposition(wind,M,J,windfe,Budget,genstatus,pricelevel);//decomposition
+			if (J[0]==0)
+			{
+				windCROonwall(wind,M,windfe,Budget,genstatus,pricelevel);//onwall
+			}
+			else
+			{
+			}
+		}
+		
+		//intermolecular reactions
+		else
+		{
+			M[0]=rand()%(windP);
+			do
+			{
+				M[1]=rand()%(windP);
+			}while(M[1]==M[0]);//to generate a M[1] different from M[0]
+		
+			windCROsynthesis(wind,M,J,windfe,Budget,genstatus,pricelevel);
+			if (J[0]==0)
+			{
+				windCROintermolecularcollision(wind,M,windfe,Budget,genstatus,pricelevel);
+				//InterCounter++;
+			}
+			else
+			{
+				//SynCounter++;
+			}
+		}
+		
+		for (int i=0;i<windP;i++)
+		{
+			if (wind[i].windPE<worstwindcost)
+			{
+				WorstWindCostInIteration=wind[i].windPE;
+				for (int t=0;t<T;t++)
+				{
+					worstwind[t]=wind[i].WindPower[t];
+				}
+			}
+		}
+		
+		//if (windfe%50==0)
+		//{
+		//	cout<<-WorstWindCostInIteration<<endl;
+		//}
+		//cout<<"windfe: "<<windfe[0]<<endl;
+		windfe[0]++;
+	}
+	//end search
+	//update D according to the worst wind profile found:
+	for (int t=0;t<T;t++)
+	{
+		worst_wind_output[t]=worstwind[t];
+		//D[t]=DBase[t]-Worst_wind[t];
+	}
+	//-------------------------------------------
+
+
+	for (int i=0;i<windInitialPopulation;i++)
+	{
+		delete []wind[i].WindPower;
+	}
+	delete []wind;
+	delete []Budget;
+	delete []J;
+	delete []M;
+	delete []Population;
+	delete []worstwind;
+}
+
+//end of wind functions
+//-------------------------------------------------------------------------------------
+
+void InitialSequence(int* sequence)
+{	
+	int Number=0;// to give the Sequence a initial value {0,1,2,3,4,5,6,7}
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		sequence[i]=Number;
+		Number++;
+	}
+
+	//shuffle(sequence,Num_Unit-Num_Base);
+	if (Num_Unit-Num_Base > 1) 
+    {
+        size_t i;
+        //srand(time(NULL));
+        for (i = 0; i < Num_Unit-Num_Base - 1; i++) 
+        {
+          size_t j = i + rand() / (RAND_MAX / (Num_Unit-Num_Base - i) + 1);
+          int t = sequence[j];
+          sequence[j] = sequence[i];
+          sequence[i] = t;
+        }
+    }
+
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		sequence[i]=sequence[i]+(Num_Base+1);
+	}
+}
+
+//considering unit priority when building the initial sequence
+void InitialSequence_priority(int* sequence)
+{
+	//int tempsequence[27]={21,20,19,11,10,9,8,1,17,15,12,14,16,13,18,7,6,3,5,4,2,24,27,26,25,23,22};//9-35
+	
+	//-------------------------
+	//deterministic version:
+	sequence[0]=19+Num_Base;
+	sequence[1]=20+Num_Base;
+	sequence[2]=21+Num_Base;
+	sequence[3]=9+Num_Base;
+	sequence[4]=10+Num_Base;
+	sequence[5]=11+Num_Base;
+	sequence[6]=8+Num_Base;
+	sequence[7]=17+Num_Base;
+	sequence[8]=15+Num_Base;
+	sequence[9]=13+Num_Base;
+	sequence[10]=16+Num_Base;
+	sequence[11]=14+Num_Base;
+	sequence[12]=12+Num_Base;
+	sequence[13]=18+Num_Base;
+	sequence[14]=22+Num_Base;
+	sequence[15]=23+Num_Base;
+	sequence[16]=27+Num_Base;
+	sequence[17]=24+Num_Base;
+	sequence[18]=25+Num_Base;
+	sequence[19]=26+Num_Base;
+	sequence[20]=1+Num_Base;
+	sequence[21]=6+Num_Base;
+	sequence[22]=7+Num_Base;
+	sequence[23]=4+Num_Base;
+	sequence[24]=5+Num_Base;
+	sequence[25]=3+Num_Base;
+	sequence[26]=2+Num_Base;
+
+
+	/*sequence[9-9]=10+Num_Base;
+	sequence[10-9]=11+Num_Base;
+	sequence[11-9]=12+Num_Base;
+	sequence[12-9]=13+Num_Base;
+	sequence[13-9]=14+Num_Base;
+	sequence[14-9]=15+Num_Base;
+	sequence[15-9]=16+Num_Base;
+	sequence[16-9]=17+Num_Base;
+	sequence[17-9]=18+Num_Base;
+	sequence[18-9]=19+Num_Base;
+	sequence[19-9]=20+Num_Base;
+	sequence[20-9]=24+Num_Base;
+	sequence[21-9]=25+Num_Base;
+	sequence[22-9]=21+Num_Base;
+	sequence[23-9]=22+Num_Base;
+	sequence[24-9]=23+Num_Base;
+	sequence[25-9]=26+Num_Base;
+	sequence[26-9]=27+Num_Base;
+	sequence[27-9]=28+Num_Base;
+	sequence[28-9]=29+Num_Base;
+	sequence[29-9]=30+Num_Base;
+	sequence[30-9]=31+Num_Base;
+	sequence[31-9]=32+Num_Base;
+	sequence[32-9]=33+Num_Base;
+	sequence[33-9]=34+Num_Base;
+	sequence[34-9]=36+Num_Base;
+	sequence[35-9]=35+Num_Base;
+	sequence[0+27]=1+Num_Base;
+	sequence[1+27]=2+Num_Base;
+	sequence[2+27]=3+Num_Base;
+	sequence[3+27]=4+Num_Base;
+	sequence[4+27]=5+Num_Base;
+	sequence[5+27]=6+Num_Base;
+	sequence[6+27]=7+Num_Base;
+	sequence[7+27]=8+Num_Base;
+	sequence[8+27]=9+Num_Base;*/
+
+}
+
+//considering dynamic unit priority when building the initial sequence
+void InitialSequence_dynamic_priority(int *sequence)
+{
+	//-------------------------
+	//dynamic version
+	//method descripted in documents in the program folder
+	//step 1: calculate all units' cost/power
+	//step 2: setup their representative numbers
+	//step 3: build the priority sequence
+
+	//---------------------
+	//testing:
+	int *testseq=new int[Num_Unit-Num_Base];
+	double *percentseq=new double[Num_Unit-Num_Base];
+	int *resultseq=new int[Num_Unit-Num_Base];
+	int Number=0;// to give the Sequence a initial value {0,1,2,3,4,5,6,7}
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		testseq[i]=Number;
+		resultseq[i]=0;
+		Number++;
+	}
+	
+	double tempsum=0;
+	//-------------------------------
+	//percentage settings
+	int check=0;
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		check=int(i/((Num_Unit-Num_Base)/(Num_Unit/10)));
+		percentseq[i]=A[i%(Num_Unit-Num_Base)+Num_Base]/Pmax[i%(Num_Unit-Num_Base)+Num_Base]
+		+B[i%(Num_Unit-Num_Base)+Num_Base]+R[i%(Num_Unit-Num_Base)+Num_Base]*Pmax[i%(Num_Unit-Num_Base)+Num_Base];
+		tempsum+=percentseq[i];
+		//cout<<check<<" ";
+		//cout<<percentseq[i]<<" ";
+	}
+	//getchar();
+	double tempsum1=0;
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		percentseq[i]=tempsum/percentseq[i];
+		percentseq[i]=pow(e,percentseq[i]);
+		tempsum1+=percentseq[i];
+		//cout<<percentseq[i]<<" ";
+	}
+	//getchar();
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		percentseq[i]=percentseq[i]/tempsum1;
+	}
+	//---------------------------------
+
+	/*cout<<"original sequence: "<<endl;
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		cout<<testseq[i]<<" ";
+	}
+	cout<<endl<<"original portion sequence: "<<endl;
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		cout<<percentseq[i]<<" ";
+	}
+	cout<<endl;*/
+	int iter=0;
+	while(iter<Num_Unit-Num_Base)
+	{
+		double judge=RandomGen(0.0,1.0);
+		//cout<<judge<<endl;
+		double persum=0;
+		int position_record=0;
+		//----------------------------------------
+		//select number according to percentage sequence
+		for (int j=0;j<Num_Unit-Num_Base-iter;j++)
+		{
+			if ((persum<judge)&&(judge<persum+percentseq[j]))
+			{
+				resultseq[iter]=testseq[j];
+				position_record=j;
+			}
+			persum+=percentseq[j];
+		}
+
+		//----------------------------------------
+		//update testseq, eliminate the number being selected in first step
+		for (int j=position_record;j<Num_Unit-Num_Base-1-iter;j++)
+		{
+			testseq[j]=testseq[j+1];
+			percentseq[j]=percentseq[j+1];
+		}
+		//and update the percentage sequence accordingly
+		double persumup=0;
+		for (int j=0;j<Num_Unit-Num_Base-1-iter;j++)
+		{
+			persumup+=percentseq[j];
+		}
+		double coe=1/persumup;
+		for (int j=0;j<Num_Unit-Num_Base-1-iter;j++)
+		{
+			percentseq[j]=percentseq[j]*coe;
+		}
+
+		iter++;
+	}
+
+	//checking:
+	//cout<<"resultant sequence: "<<endl;
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		//cout<<resultseq[i]<<" ";
+		sequence[i]=resultseq[i]+(Num_Base+1);
+	}
+	//cout<<endl<<endl;
+	//getchar();
+	delete []testseq;
+	delete []percentseq;
+	delete []resultseq;
+}
+
+void HeuristicAndNeighborSearch(generator* gen, int **genstatus, int *sequence, double* D) //genstatus[T][Num_Unit]
+{
+	//----------------------------------------
+	//addition heuristic: shut down extra On-state unit caused by the randomness during peak hour preset
+	/*for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		for (int t=0;t<T-1;t++)
+		{
+			//if ((genstatus[t][i+Num_Base]==1)&&(genstatus[t+1][i+Num_Base]==0))
+				//{
+					double sump=0;
+					for (int u=0;u<Num_Unit;u++)//calculate the current reserve power upper limit
+					{
+						sump+=gen[u].Pmax*genstatus[t][u];
+					}
+					if (wind_switch==0)
+					{
+						if ((sump-gen[i+Num_Base].Pmax)>=(D[t]+SR[t]))//if reserve still satisfied with current unit turned off
+						{
+							//check the MUT constraint
+							int sum=0;
+							int mutupper=t-gen[i+Num_Base].minup;
+							if (mutupper<0)
+							{
+								break;
+							}
+							for (int mut=0;mut<=mutupper-1;mut++)
+							{
+								sum+=genstatus[t-mut][i+Num_Base];
+							}
+							if(sum>gen[i+Num_Base].minup)//MUT satisfied
+							{
+								genstatus[t][i+Num_Base]=0;//turn off the current unit
+							}
+						}
+					}
+					else
+					{
+						if ((sump-gen[i+Num_Base].Pmax)>=(D[t]))//if reserve still satisfied with current unit turned off
+						{
+							//check the MUT constraint
+							int sum=0;
+							int mutupper=t-gen[i+Num_Base].minup;
+							if (mutupper<0)
+							{
+								break;
+							}
+							for (int mut=0;mut<=mutupper-1;mut++)
+							{
+								sum+=genstatus[t-mut][i+Num_Base];
+							}
+							if(sum>gen[i+Num_Base].minup)//MUT satisfied
+							{
+								genstatus[t][i+Num_Base]=0;//turn off the current unit
+							}
+						}
+					}
+				//}
+		}
+
+		//case for t=T-1
+			if (genstatus[T-1][i+Num_Base]==1)
+			{
+				double sump=0;
+				for (int u=0;u<Num_Unit;u++)//calculate the current reserve power upper limit
+				{
+					sump+=gen[u].Pmax*genstatus[T-1][u];
+				}
+				//if ((sump-gen[i+Num_Base].Pmax)>=(D[T-1]+SR[T-1]))//if reserve still satisfied with current unit turned off
+				if ((sump-gen[i+Num_Base].Pmax)>=(D[T-1]))//if reserve still satisfied with current unit turned off
+				{
+					//check the MUT constraint
+					int sum=0;
+					for (int mut=0;mut<=gen[i+Num_Base].minup;mut++)
+					{
+						sum+=genstatus[T-1-mut][i+Num_Base];
+					}
+					if(sum>gen[i+Num_Base].minup)//MUT satisfied
+					{
+						genstatus[T-1][i+Num_Base]=0;//turn off the current unit
+					}
+				}
+			}
+	}*/
+
+	for (int i=Num_Unit-Num_Base-1;i>=0;i--)
+	{
+		for (int t=0;t<T-1;t++)
+		{
+				if ((genstatus[t][sequence[i]-1]==1)&&(genstatus[t+1][sequence[i]-1]==0))
+				{
+					double sump=0;
+					for (int u=0;u<Num_Unit;u++)//calculate the current reserve power upper limit
+					{
+						sump+=gen[u].Pmax*genstatus[t][u];
+					}
+					if ((sump-gen[sequence[i]-1].Pmax)>=(D[t]*1.1))//if reserve still satisfied with current unit turned off
+					{
+						//check the MUT constraint
+						int sum=0;
+						int mutupper=t-gen[sequence[i]-1].minup;
+						if (mutupper<0)
+						{
+							break;
+						}
+						for (int mut=t;mut>=mutupper+1;mut--)
+						{
+							sum+=genstatus[mut-1][sequence[i]-1];
+						}
+						if(sum>=gen[sequence[i]-1].minup)//MUT satisfied
+						{
+							genstatus[t][sequence[i]-1]=0;//turn off the current unit
+						}
+					}
+				}
+		}
+
+			//case for t=T-1
+			if (genstatus[T-1][sequence[i]-1]==1)
+			{
+				double sump=0;
+				for (int u=0;u<Num_Unit;u++)//calculate the current reserve power upper limit
+				{
+					sump+=gen[u].Pmax*genstatus[T-1][u];
+				}
+				if ((sump-gen[sequence[i]-1].Pmax)>=(D[T-1]*1.1))//if reserve still satisfied with current unit turned off
+				{
+					//check the MUT constraint
+					int sum=0;
+					for (int mut=0;mut<=gen[sequence[i]-1].minup;mut++)
+					{
+						sum+=genstatus[T-1-mut][sequence[i]-1];
+					}
+					if(sum>gen[sequence[i]-1].minup)//MUT satisfied
+					{
+						genstatus[T-1][sequence[i]-1]=0;//turn off the current unit
+					}
+				}
+			}
+	}
+}
+
+//Given a sequence, return the corresponding cost
+double SequenceToCost(int* Sequence, double* D, int* Pricesequence, double *worstwind)//, int* D, int NumberofBaseUnit, int* priority, int* Pmax,int* Pmin,int* Preduation,
+				   //int* Minup,int* Mindown,double* A,double* B, double* R,double* Hstart,double* Cstart,int* coldstarthr)
+{
+	generator *gen=new generator[Num_Unit];//initial units
+	for (int q=0;q<Num_Unit;q++)
+	{
+		gen[q].Pmax=Pmax[q];
+		gen[q].Pmin=Pmin[q];
+		gen[q].initials=Preduation[q];
+		gen[q].minup=Minup[q];
+		gen[q].mindown=Mindown[q];
+		gen[q].duration=Preduation[q];
+		gen[q].a=A[q];
+		gen[q].b=B[q];
+		gen[q].r=R[q];
+		//gen[q].hotstart=Hstart[q];
+		gen[q].start=Start[q];
+		//gen[q].coldstarthour=coldstarthr[q];
+		gen[q].rampup=Rampup[q];
+		gen[q].rampdown=Rampdown[q];
+	}//input active power limitation
+
+	double MinTempResult=100000000000000;
+	double FinalResult;
+	int SequenceToCostIteration=1;
+	int jumpout=3;
+
+	int **Tempgenstatus=new int*[T];
+	double **Tempgenresult=new double*[T];
+	for (int i=0;i<T;i++)
+	{
+		Tempgenstatus[i]=new int[Num_Unit];
+		Tempgenresult[i]=new double[Num_Unit];
+	}
+
+	while(SequenceToCostIteration>0)
+	{
+		for (int i=0;i<T;i++)
+		{
+			for (int j=0;j<Num_Unit;j++)
+				{
+					Tempgenstatus[i][j]=0;
+					Tempgenresult[i][j]=0;
+				}
+		}
+
+		if (wind_switch==1)
+		{
+			//implementation of uncertainties of wind generations, to find the wind power set that
+			//gives the maximum total generation cost
+			//FindWorstWind(Tempgenstatus,D);
+			if (Deterministic_Worst_Wind==1)
+			for (int t=0;t<T;t++)
+			{
+				D[t]=DBase[t]-Worst_wind[t];
+			}
+			else
+			for (int t=0;t<T;t++)
+			{
+				D[t]=DBase[t]-worstwind[t];
+			}
+			//getchar();
+		}
+
+		if (DR_switch==1)
+		{
+			LoadCurveUpdatebyDR(Pricesequence,D,D);
+		}
+
+		Genstatusset1(Sequence,Tempgenstatus,gen,D);
+
+		//---------------------------
+		//extra neighbor search & heuristic adjustment
+		HeuristicAndNeighborSearch(gen, Tempgenstatus, Sequence,D);
+
+		//FeasibleSolutionEnd=clock();
+		//long FeasibleSolution=(FeasibleSolutionEnd-FeasibleSolutionStart)/1000;
+		if (LP_ED==1)
+		{
+			PowerdispatchLP(Tempgenstatus,D,Tempgenresult);
+		}
+		else
+		{
+			PowerdispatchLambda(gen,Tempgenstatus,D,Tempgenresult);
+		}
+
+		//Incentive to record the incentive paid to customers' actively power curtailment
+		//Income to record with the set electricity price, the power company's income
+		double TotalCost,FuelCost,StartCost,Income=0;
+		FuelCost=Fuelcost(gen,Tempgenresult);\
+		StartCost=Startcost(gen,Tempgenstatus);
+		TotalCost=FuelCost+StartCost;
+		
+		double Penalty=0;
+		if (DR_switch==0)
+		{
+			for (int t=0;t<T;t++)
+			{
+				Income+=DBase[t]*15;
+			}
+		}
+		else
+		{
+			for (int t=0;t<T;t++)
+			{
+				Income+=D[t]*Prices[Pricesequence[t]];
+			}
+			if (Income>=No_DR_Income)
+			{
+				Penalty=(Income-No_DR_Income)*100;
+				//cout<<Penalty<<endl;
+			}
+		}
+		
+		/*if (TotalCost<MinTempResult)
+		{
+			MinTempResult=TotalCost;
+			FinalResult=TotalCost;
+			//SequenceToCostIteration=SequenceToCostIteration+3;
+		}
+
+		else
+		{
+			jumpout--;
+		}*/
+		TotalCost=TotalCost+Penalty;
+
+		if (TotalCost<=GlobalMinimum)
+		{
+			GlobalMinimum=TotalCost;
+			for (int t=0;t<T;t++)
+			{
+				for (int i=0;i<Num_Unit;i++)
+				{
+					GlobalMinResult[t][i]=Tempgenresult[t][i];
+					GlobalStatus[t][i]=Tempgenstatus[t][i];
+				}
+				Globalpricelevel[t]=Pricesequence[t];
+			}
+			GlobalFuel=FuelCost;
+			GlobalStart=StartCost;
+			GlobalProfit=Income-GlobalMinimum;
+			Globalworstwind=-WorstWindCostInIteration;
+			GlobalPenalty=Penalty;
+
+			for (int i=0;i<Num_Unit-Num_Base;i++)
+			{
+				GlobalSequence[i]=Sequence[i];
+			}
+			
+		}
+
+		if (jumpout==0)
+		{
+			break;
+		}
+
+		//cout<<"doing the loop"<<endl;
+		//FinalResult=GlobalMinimum;
+		if (wind_switch==0)
+		{
+			FinalResult=GlobalMinimum+Penalty;
+		}
+		else
+		{
+			//FinalResult=-GlobalProfit+Penalty;
+			FinalResult=GlobalMinimum+Penalty;
+		}
+		SequenceToCostIteration--;
+	}
+
+	for (int i=0;i<T;i++)
+	{
+		delete []Tempgenstatus[i];
+		delete []Tempgenresult[i];
+	}
+	delete []Tempgenstatus;
+	delete []Tempgenresult;
+	delete []gen;
+
+	return FinalResult;
+}
+
+//to mimic the onwall reaction
+void CROonwall(Molecule *S, int *M, int *fe, double* D, double** EM, double *worstwind)//Inc is the incentive price given to users
+{
+	//cout<<"in onwall"<<endl;
+	int *temp=new int[Num_Unit-Num_Base];
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		temp[i]=S[M[0]].Sequence[i];
+	}
+	int *temppricelevel=new int[T];
+	double PEresult;
+	double Energyjudge=0;//to judge whether the reation will happen
+	double q;//a random number between 0 and 1
+
+	int RandomNumber1=rand()%(Num_Unit-Num_Base);
+	int RandomNumber2;
+	if (RandomNumber1==0)
+	{
+		RandomNumber2=RandomNumber1+1;
+	}
+	else
+	{
+		RandomNumber2=RandomNumber1-1;
+	}
+	int TempN;
+	TempN=temp[RandomNumber1];
+	temp[RandomNumber1]=temp[RandomNumber2];
+	temp[RandomNumber2]=TempN;
+
+	//----------------------------------
+	//neighbor search for price level:
+	for (int t=0;t<T;t++)
+	{
+		temppricelevel[t]=int(GaussRandomGen(S[M[0]].PriceLevel[t],3));
+		if (temppricelevel[t]<0)
+		{
+			temppricelevel[t]=-temppricelevel[t];
+		}
+		else if (temppricelevel[t]>9)
+		{
+			temppricelevel[t]=-(9-temppricelevel[t]);
+		}
+	}
+	//----------------------------------
+	
+	PEresult=SequenceToCost(temp,D,temppricelevel,worstwind);	
+	//cout<<"PE: "<<PEresult<<endl;
+
+	fe[0]++;//updating function evaluation time
+	S[M[0]].NumHit++;
+	Energyjudge=S[M[0]].PE+S[M[0]].KE-PEresult;
+
+	if (Energyjudge>=0)//onwall happens
+	{
+		q=RandomGen(KElossrate,1);
+		S[M[0]].KE=Energyjudge*q;
+		S[M[0]].PE=PEresult;
+		buffer=buffer+Energyjudge*(1-q);
+		
+		//update the solution information
+		for (int i=0;i<Num_Unit-Num_Base;i++)
+		{
+			S[M[0]].Sequence[i]=temp[i];
+		}
+
+		S[M[0]].MinHit=S[M[0]].NumHit;		
+	}
+	//cout<<"end onwall"<<endl;
+	delete []temp;
+}
+
+//decomposition reaction
+void CROdecomposition(Molecule *S, int *M, bool *J, int *fe, int *population, double* D, double **EM, double *worstwind)
+{
+	//cout<<"in decom"<<endl;
+	if (S[M[0]].NumHit-S[M[0]].MinHit<=Alpha)
+	{
+		J[0]=0;
+		return;
+	}
+	
+	//two new sequences
+	int *S1=new int[Num_Unit-Num_Base];
+	int *S2=new int[Num_Unit-Num_Base];
+	double KEresult1,KEresult2,PEresult1,PEresult2;
+	double Energyjudge=0;//to decide whether the decom will happen
+	double k=0;//a random number between 0 and 1 to update energies
+	int *temppricelevel1=new int[T];
+	int *temppricelevel2=new int[T];
+
+	int Mid=Num_Unit-Num_Base/2;
+	for (int i=0;i<Mid;i++)
+	{
+		S1[i]=S[M[0]].Sequence[i+Mid];
+		S1[i+Mid]=S[M[0]].Sequence[Mid-i-1];
+
+		S2[i+Mid]=S[M[0]].Sequence[i];
+		S2[Mid-i-1]=S[M[0]].Sequence[i+Mid];
+	}
+
+	PEresult1=SequenceToCost(S1,D,temppricelevel1,worstwind);
+	PEresult2=SequenceToCost(S2,D,temppricelevel2,worstwind);
+	fe[0]=fe[0]+2;
+
+	//Energyjudge=cro.PE[M[0]]+cro.KE[M[0]]-PEresult1-PEresult2;
+	Energyjudge=S[M[0]].PE+S[M[0]].KE-PEresult1-PEresult2;
+
+	if (Energyjudge>=0)
+	{
+		J[0]=1;//update the judger, the decom happens
+		k=RandomGen(0,1);
+		KEresult1=S[M[0]].KE*k;
+		KEresult2=S[M[0]].KE*(1-k);
+
+		population[0]++;
+		//update solution space
+		for (int i=0;i<Num_Unit-Num_Base;i++)
+		{
+			S[M[0]].Sequence[i]=S1[i];
+			S[population[0]-1].Sequence[i]=S2[i];
+		}
+		S[M[0]].KE=KEresult1;
+		S[population[0]-1].KE=KEresult2;
+		S[M[0]].PE=PEresult1;
+		S[population[0]-1].PE=PEresult2;
+		//solution.Y[M[0]]=PEresult1;
+		//solution.Y[solution.P-1]=PEresult2;
+
+		S[M[0]].NumHit=0;
+		S[population[0]-1].NumHit=0;
+		S[M[0]].MinHit=0;
+		S[population[0]-1].MinHit=0;
+	}
+	else if (Energyjudge+buffer>=0)
+	{
+		J[0]=1;//update the judger, the decom happens
+		double m1,m2,m3,m4;
+		m1=RandomGen(0,1);
+		m2=RandomGen(0,1);
+		m3=RandomGen(0,1);
+		m4=RandomGen(0,1);
+		KEresult1=(Energyjudge+buffer)*m1*m2;
+		KEresult2=(Energyjudge+buffer-KEresult1)*m3*m4;
+		buffer=buffer+Energyjudge-KEresult1-KEresult2;
+
+		population[0]++;
+		for (int i=0;i<Num_Unit-Num_Base;i++)
+		{
+			S[M[0]].Sequence[i]=S1[i];
+			S[population[0]-1].Sequence[i]=S2[i];
+		}
+		S[M[0]].KE=KEresult1;
+		S[population[0]-1].KE=KEresult2;
+		S[M[0]].PE=PEresult1;
+		S[population[0]-1].PE=PEresult2;
+
+		S[M[0]].NumHit=0;
+		S[population[0]-1].NumHit=0;
+		S[M[0]].MinHit=0;
+		S[population[0]-1].MinHit=0;
+	}
+	else
+	{
+		J[0]=0;
+	}
+
+	delete []S1;
+	delete []S2;
+}
+
+//to mimic the intermolecular collision
+void CROintermolecularcollision(Molecule *S, int *M, int *fe, double* D, double **EM, double *worstwind)
+{
+	//cout<<"in inter"<<endl;
+	int *temp1=new int[Num_Unit-Num_Base];
+	int *temp2=new int[Num_Unit-Num_Base];
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		temp1[i]=S[M[0]].Sequence[i];
+		temp2[i]=S[M[1]].Sequence[i];
+	}
+	double KEresult1, KEresult2, PEresult1, PEresult2;
+	double Energyjudge=0;
+	double p;//random number between 0,1
+	int *temppricelevel1=new int[T];
+	int *temppricelevel2=new int[T];
+
+	int RandomNumber1=rand()%(Num_Unit-Num_Base-2)+1;
+	int RandomNumber2;
+	if (rand()<0.5)
+	{
+		RandomNumber2=RandomNumber1-1;
+	}
+	else
+	{
+		RandomNumber2=RandomNumber1+1;
+	}
+	int Temp;
+	Temp=temp1[RandomNumber1];
+	temp1[RandomNumber1]=temp1[RandomNumber2];
+	temp1[RandomNumber2]=Temp;
+	Temp=temp2[RandomNumber1];
+	temp2[RandomNumber1]=temp2[RandomNumber2];
+	temp2[RandomNumber2]=Temp;
+	
+	//----------------------------------
+	//neighbor search for price level:
+	for (int t=0;t<T;t++)
+	{
+		temppricelevel1[t]=int(GaussRandomGen(S[M[0]].PriceLevel[t],3));
+		temppricelevel2[t]=int(GaussRandomGen(S[M[1]].PriceLevel[t],3));
+		if (temppricelevel1[t]<0)
+		{
+			temppricelevel1[t]=-temppricelevel1[t];
+		}
+		else if (temppricelevel1[t]>9)
+		{
+			temppricelevel1[t]=-(9-temppricelevel1[t]);
+		}
+		if (temppricelevel2[t]<0)
+		{
+			temppricelevel2[t]=-temppricelevel2[t];
+		}
+		else if (temppricelevel2[t]>9)
+		{
+			temppricelevel2[t]=-(9-temppricelevel2[t]);
+		}
+	}
+	//----------------------------------
+
+	PEresult1=SequenceToCost(temp1,D,temppricelevel1,worstwind);
+	PEresult2=SequenceToCost(temp2,D,temppricelevel2,worstwind);
+	
+	fe[0]=fe[0]+2;
+	S[M[0]].NumHit++;
+	S[M[1]].NumHit++;
+	Energyjudge=(S[M[0]].PE+S[M[0]].KE+S[M[1]].PE+S[M[1]].KE)-(PEresult1+PEresult2);
+
+	if (Energyjudge>=0)
+	{
+		p=RandomGen(0,1);
+		KEresult1=Energyjudge*p;
+		KEresult2=Energyjudge*(1-p);
+
+		for (int i=0;i<Num_Unit-Num_Base;i++)
+		{
+			S[M[0]].Sequence[i]=temp1[i];
+			S[M[1]].Sequence[i]=temp2[i];
+		}
+		S[M[0]].KE=KEresult1;
+		S[M[1]].KE=KEresult2;
+		S[M[0]].PE=PEresult1;
+		S[M[1]].PE=PEresult2;
+
+		S[M[0]].MinHit=S[M[0]].NumHit;
+		S[M[0]].MinHit=S[M[0]].NumHit;
+	}
+
+	delete []temp1;
+	delete []temp2;
+}
+
+//synthesis reaction
+void CROsynthesis(Molecule *S, int *M, bool *J, int *fe, int *population, double* D, double **EM, double *worstwind)
+{
+	//cout<<"in syn"<<endl;
+	if ((S[M[0]].KE>=Beta)||(S[M[1]].KE>=Beta))
+	{
+		J[0]=0;
+		return;
+	}
+	
+	int *temp=new int[Num_Unit-Num_Base];
+	int *duplicatecounter=new int[Num_Unit-Num_Base];
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		temp[i]=0;
+		duplicatecounter[i]=0;
+	}
+	double KEresult,PEresult;
+	double Energyjudge=0;
+	int *temppricelevel=new int[T];
+
+	//--------------------------------------------------------------------
+	//Synthesis with "keeping same numbers on same position, randomize others"
+	
+	//firstly, record positions with same number
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		if (S[M[0]].Sequence[i]==S[M[1]].Sequence[i])
+		{
+			temp[i]=S[M[0]].Sequence[i];
+			duplicatecounter[i]=i;
+		}
+	}
+
+	//secondly, initial a random sequence
+	InitialSequence(temp);
+
+	//finally, swap the number on recorded positions with the wanted number  
+	//in the new sequence
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		if (duplicatecounter[i]!=0) //i position has same number in S[M[0]] & S[M[1]]
+		{
+			int temps=0;
+			for (int j=0;j<Num_Unit-Num_Base;j++)
+			{
+				if (temp[j]==S[M[0]].Sequence[i])
+				{
+					//cout<<"swaped!"<<endl;
+					temps=temp[j];
+					temp[j]=temp[i];
+					temp[i]=temps;
+					break;
+				}
+			}
+		}
+	}//end of swap
+	//-----------------------------------------------------------------
+
+	//----------------------------------
+	//synthesis for price level:
+	for (int t=0;t<T;t++)
+	{
+		double p=RandomGen(0,1);
+		if (p<0.5)
+		{
+			temppricelevel[t]=S[M[0]].PriceLevel[t];
+		}
+		else
+		{
+			temppricelevel[t]=S[M[1]].PriceLevel[t];
+		}
+	}
+	//----------------------------------
+
+	PEresult=SequenceToCost(temp,D,temppricelevel,worstwind);
+	
+	fe[0]++;
+	Energyjudge=S[M[0]].PE+S[M[0]].KE+S[M[1]].PE+S[M[1]].KE-PEresult;
+	//Synreduce to reduce the possibility of a synthesis
+
+	if (Energyjudge>=0)
+	{
+		J[0]=1;
+		KEresult=Energyjudge;
+		
+		//copy the resultant molecule to the solution set
+		for (int i=0;i<Num_Unit-Num_Base;i++)
+		{
+			S[M[0]].Sequence[i]=temp[i];
+		}
+		S[M[0]].PE=PEresult;
+		S[M[0]].KE=KEresult;
+
+		//reduce the other reactant molecule from the solution set
+		for (int p=M[1]+1;p<population[0];p++)
+		{
+			for (int n=0;n<Num_Unit-Num_Base;n++)
+			{
+				S[p-1].Sequence[n]=S[p].Sequence[n];
+			}
+			S[p-1].KE=S[p].KE;
+			S[p-1].PE=S[p].PE;
+		}
+
+		population[0]--;
+		S[M[0]].MinHit=0;
+		S[M[0]].NumHit=0;
+	}
+
+	delete []temp;
+}
+
+int main()
+{
+	srand(time(NULL));
+
+	//----------------------------------------
+	//read the elasticity matrix value
+	double** ElasticityMatrix = new double*[T];
+	for (int t=0;t<T;t++)
+	{
+		ElasticityMatrix[t]=new double[T];
+	}
+	ReadMatrix(ElasticityMatrix);
+	//----------------------------------------
+	
+	double *D=new double[T];
+	double *worst_wind=new double[T];
+	for (int t=0;t<T;t++)
+	{
+		D[t]=DBase[t];
+		worst_wind[t]=0;
+	}
+	double epsilon=OriEpsilon;
+
+	int LoopTimeCheck=LoopTime;
+	double LoopResult[50];
+	int loop=0;
+	double LoopMaxCost=0;
+	double LoopMinCost=1000000000000;
+	
+	//Function Evaluation
+	int *FE=new int[1];
+	int *Population=new int[1];
+	
+	char FileName[100];
+	sprintf(FileName, "Result/UC_Unit%d_Wind%d_DR%d.csv", Num_Unit, wind_switch,DR_switch);
+	fstream fout(FileName, ios::out);
+	fout<<"Initial KE ,"<<GlobalIniKE<<endl;
+	fout<<"KElossrate ,"<<KElossrate<<", Molecoll ,"<<Molecoll<<endl;
+	fout<<"Initial NP ,"<<InitialPopulation<<endl;
+	fout<<"Alpha ,"<<Alpha<<", Beta ,"<<Beta<<endl;
+	fout<<"Original Sigma ,"<<Sigma0<<endl;
+	fout<<"Max FE ,"<<FEmax<<endl;
+	fout.close();
+
+	//initialization molecules:
+	GlobalMinResult=new double *[T];
+	GlobalStatus=new int *[T];
+	for(int i=0;i<T;i++)
+	{
+		GlobalMinResult[i]=new double[Num_Unit];
+		GlobalStatus[i]=new int[Num_Unit];
+		for(int n=0;n<Num_Unit;n++)
+		{
+			GlobalMinResult[i][n]=0;
+			GlobalStatus[i][n]=0;
+		}
+	}
+	GlobalSequence=new int[Num_Unit-Num_Base];
+	Globalpricelevel=new int [T];
+	
+	clock_t tStart = clock();
+
+	while (LoopTime>0)
+	{
+		//time counting
+		long LoopStart=clock(),LoopEnd(0);
+		counter=0;
+		GlobalMinimum=10000000000000;
+		
+		//initial D, worst wind, and UB LB.
+		for (int t=0;t<T;t++)
+		{
+			D[t]=DBase[t];
+			worst_wind[t]=0;
+		}
+		double *UB=new double[1];
+		UB[0]=100000000000000000;
+		double *LB=new double[1];
+		LB[0]=-100000000000000000;
+
+		while (abs(UB[0]-LB[0])>0.005*LB[0])
+		{
+
+			int Num_Ini_Molecule = 20;
+			Molecule *SolutionSpace=new Molecule[Num_Ini_Molecule];
+			for (int i=0;i<Num_Ini_Molecule;i++)
+			{
+				SolutionSpace[i].Sequence=new int[Num_Unit-Num_Base];
+				SolutionSpace[i].PriceLevel=new int[T];
+			}
+		
+			int DecomCounter=0;
+			int SynCounter=0;
+			int OnwallCounter=0;
+			int InterCounter=0;
+
+			buffer=0; 
+			double InitialKE=GlobalIniKE;
+			int *InitialMolecule=new int[Num_Unit-Num_Base];
+			for(int i=0;i<InitialPopulation;i++) // 5 is the number of initially generated molecules.  
+			{
+				if (IniSeq==1)
+				{
+					InitialSequence_dynamic_priority(InitialMolecule);
+				}
+				else if (IniSeq==0)
+				{
+					InitialSequence_priority(InitialMolecule);
+				}
+				else
+				{
+					InitialSequence(InitialMolecule);
+				}
+			
+				for (int j=0;j<Num_Unit-Num_Base;j++)
+				{
+					int temp;
+					temp=InitialMolecule[j];
+					SolutionSpace[i].Sequence[j]=temp;
+					cout<<SolutionSpace[i].Sequence[j]<<" ";
+				}
+			
+				SolutionSpace[i].NumHit=0;
+				SolutionSpace[i].MinHit=0;
+				SolutionSpace[i].KE=InitialKE;
+			
+				//----------------------------
+				//Initialize incentive values to implement DR process:
+				//if DR_switch=0, normal UC; If =1, UCDR
+				if (DR_switch==0)
+				{
+				
+				}
+				else if (DR_switch==1)
+				{
+					double cost_no_DR=0;
+					double cost_DR=0;
+					double *Dtemp=new double[T];
+					for (int t=0;t<T;t++)
+					{
+						SolutionSpace[i].PriceLevel[t]=int(GaussRandomGen(2,1));
+						if (SolutionSpace[i].PriceLevel[t]<0)
+						{
+							SolutionSpace[i].PriceLevel[t]=0;
+						}
+						else if (SolutionSpace[i].PriceLevel[t]>9)
+						{
+							SolutionSpace[i].PriceLevel[t]=9;
+						}
+						//cout<<SolutionSpace[i].PriceLevel[t]<<" ";
+						Dtemp[t]=DBase[t]*PtoD[SolutionSpace[i].PriceLevel[t]];
+
+						cost_no_DR+=DBase[t]*15;
+						cost_DR+=Dtemp[t]*Prices[SolutionSpace[i].PriceLevel[t]];
+					}
+					delete []Dtemp;
+				}
+				SolutionSpace[i].PE=SequenceToCost(InitialMolecule,D,SolutionSpace[i].PriceLevel, Worst_wind);
+				//------------------------------
+				cout<<endl<<SolutionSpace[i].PE<<endl;
+			}
+			//getchar();
+			delete []InitialMolecule;
+		
+			//check initialization
+			double Judge;//to judge whether intermolecular will happen
+			double Minimum[100000];
+			int EverMinCounter=0;//each time a better result is found, this counter increased by 1
+
+			//Reset FE & population size
+			FE[0]=0;
+			Population[0]=InitialPopulation;
+			int *M=new int[2];//to choose molecules from the population, M[0] for the 1st picked molecule. M[1] for the 2nd
+			M[0]=M[1]=0;
+			bool *J=new bool[1];//to check if a Decom or Synth has happened. J=1 means happened, J=0 means not happened
+			J[0]=0;
+
+			while(FE[0]<FEmax)
+			{
+				//Judge = RandomGen(0.0, 1.0);
+				J[0]=0;
+				//cout<<FE[0]<<endl;
+				Judge=RandomGen(0,1.0);
+				//single molecular reactions
+				if ((Judge>Molecoll)||(Population[0]==1)) //single molecule reaction happen
+				{
+					M[0]=rand()%(Population[0]);//randomly pick one solution from the population
+
+					//CROdecomposition(SolutionSpace,M,J,FE,Population,D,ElasticityMatrix,worst_wind);//decomposition
+					if (J[0]==0)
+					{
+						CROonwall(SolutionSpace,M,FE,D,ElasticityMatrix,worst_wind);//onwall
+						OnwallCounter++;
+					}
+					else
+					{
+						//DecomCounter++;
+					}
+				}
+		
+				//intermolecular reactions
+				else
+				{
+					M[0]=rand()%(Population[0]);
+					do
+					{
+						M[1]=rand()%(Population[0]);
+					}while(M[1]==M[0]);//to generate a M[1] different from M[0]
+
+					CROsynthesis(SolutionSpace,M,J,FE,Population,D,ElasticityMatrix,worst_wind);
+					if (J[0]==0)
+					{
+						CROintermolecularcollision(SolutionSpace,M,FE,D,ElasticityMatrix, worst_wind);
+						InterCounter++;
+					}
+					else
+					{
+						SynCounter++;
+					}
+				}
+			}//end of 1 CRO loop
+			//update LB
+			cout<<endl;
+			cout<<"On-Wall: "<<OnwallCounter<<endl;
+			cout<<"Decomposition: "<<DecomCounter<<endl;
+			cout<<"Inter-Molecule Collision: "<<InterCounter<<endl;
+			cout<<"Synthesis: "<<SynCounter<<endl;
+			LB[0]=GlobalMinimum;
+
+			//to find the worst wind and update UB:
+			FindWorstWind_binary(GlobalStatus,worst_wind,Globalpricelevel);
+			double tempUB=MatrixToCost(worst_wind,GlobalStatus,Globalpricelevel);
+			if (tempUB<UB[0])
+			{
+				UB[0]=tempUB;
+			}
+
+			cout<<"LB: "<<LB[0]<<endl;
+			cout<<"UB: "<<UB[0]<<endl;
+		
+			LoopResult[loop]=GlobalMinimum;
+			for (int i=0;i<Num_Ini_Molecule;i++)
+			{
+				delete []SolutionSpace[i].Sequence;
+				delete []SolutionSpace[i].PriceLevel;
+			}
+			delete []SolutionSpace;
+			delete []M;
+			delete []J;
+
+		}//one loop finish
+
+		cout<<endl<<"Loop "<<LoopTime<<" Done!"<<endl;
+		loop++;
+		LoopTime--;
+		
+		delete []UB;
+		delete []LB;
+	}//end of simulation trails
+
+	double TotalLoopTime=(double)(clock() - tStart)/CLOCKS_PER_SEC;
+
+	printf("Time taken: %.2fs\n", (double)(clock() - tStart)/CLOCKS_PER_SEC);
+
+	double LoopSum=0;
+	double LoopMean;
+
+	for (int l=0;l<LoopTimeCheck;l++)//looptimecheck = loop time
+	{
+		if (LoopMaxCost<LoopResult[l])
+		{
+			LoopMaxCost=LoopResult[l];
+		}
+		if (LoopMinCost>LoopResult[l])
+		{
+			LoopMinCost=LoopResult[l];
+		}
+		LoopSum=LoopSum+LoopResult[l];
+	}
+	LoopMean=LoopSum/LoopTimeCheck;
+
+	fstream fout2(FileName,ios::app);
+	fout2<<"Loop worst result: ,"<<LoopMaxCost<<endl;
+	fout2<<"Loop best result: ,"<<LoopMinCost<<endl;
+	fout2<<"Loop mean result: ,"<<LoopMean<<endl;
+	
+	fout2<<"Best Status detailed Result:"<<endl;
+	for (int t=0;t<T;t++)
+	{
+		for (int i=0;i<Num_Unit;i++)
+		{
+			fout2<<GlobalStatus[t][i]<<",";
+		}
+		fout2<<endl;
+	}
+
+	fout2<<"Best ED detailed Result:"<<endl;
+	for (int t=0;t<T;t++)
+	{
+		for (int i=0;i<Num_Unit;i++)
+		{
+			fout2<<GlobalMinResult[t][i]<<",";
+		}
+		fout2<<endl;
+	}
+
+	fout2<<endl<<"Best Sequence Result:"<<endl<<",";
+	for (int i=0;i<Num_Unit-Num_Base;i++)
+	{
+		fout2<<GlobalSequence[i]<<",";
+	}
+
+	fout2<<endl<<"Average converge:"<<endl;
+	for (int i=0;i<counter;i++)
+	{
+		fout2<<converge[i]/LoopTimeCheck<<", ";
+	}
+
+	fout2<<endl<<"Best FuelCost Result: ,"<<GlobalFuel<<endl;
+
+	fout2<<endl<<"Best StartCost Result: ,"<<GlobalStart<<endl;
+
+	fout2<<endl<<"Generation cost with Wind: ,"<<Globalworstwind<<endl;
+
+	fout2<<endl<<"Profit Result: ,"<<GlobalProfit<<endl;
+
+	fout2<<endl<<"Penalty Result: ,"<<GlobalPenalty<<endl;
+
+	if (DR_switch==1)
+	{
+		fout2<<endl<<"Price levels: ,"<<endl;
+
+		for (int t=0;t<T;t++)
+		{
+			fout2<<Globalpricelevel[t]<<",";
+		}
+		fout2<<endl;
+		for (int t=0;t<T;t++)
+		{
+			fout2<<Prices[Globalpricelevel[t]]<<",";
+		}
+	}
+
+	fout2<<endl<<"Avr Time Used: ,"<<TotalLoopTime/loop<<endl;
+	fout2.close();
+
+	getchar();
+
+	delete []D;
+	delete []worst_wind;
+	delete []FE;
+	delete []Population;
+	for(int i=0;i<T;i++)
+	{
+		delete []GlobalMinResult[i];
+		delete []GlobalStatus[i];
+		delete []ElasticityMatrix[i];
+	}
+	delete []GlobalMinResult;
+	delete []GlobalStatus;
+	delete []ElasticityMatrix;
+	delete []GlobalSequence;
+	
+	return 0;
+}
