@@ -1,3 +1,13 @@
+/*
+
+Created in 2012.10
+by Mike Yi SUN
+
+This is a full c++ script using Chemical Reaction Optimization to optimize the Unit Commitment Problem under a 10-unit system.
+Algorithm and system parameters are directly assigned in the beginning of the script.
+
+*/
+
 #include<iostream>
 #include<stdlib.h> 
 #include<stdio.h> 
