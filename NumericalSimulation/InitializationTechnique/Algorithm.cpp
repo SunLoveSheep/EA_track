@@ -1,3 +1,9 @@
+/*
+
+This is a summation function that is used to control what algorithm to implement in simulation.
+
+*/
+
 #include "solution.h"
 #include "Algorithm.h"
 #include "DE.h"
