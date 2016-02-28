@@ -1,3 +1,8 @@
+/*
+This .cpp file contains functions that generate initial solutions by different techniques. The function used to read selection of technique
+and call according function is also included.
+*/
+
 #include <string>
 #include "solution.h"
 #include "Initialization.h"
@@ -24,6 +29,7 @@ Initialization::~Initialization()
 	
 }
 
+//a common random number generator that returns a double random number between min and max. Seed is based on system time.
 double Initialization::RandomGen(double min, double max)
 {
 	double Min = (min*1000000);
@@ -42,6 +48,7 @@ double Initialization::RandomGen(double min, double max)
     return Result/1000000.0;
 }
 
+//a common gaussian random number generator that returns a double random number based on miu and sigma
 double Initialization::GaussRandomGen(double miu, double sigma)
 {
     static double V1, V2, S;
@@ -68,6 +75,8 @@ double Initialization::GaussRandomGen(double miu, double sigma)
     return X;
 }
 
+//This is a special function for our design. Number of initial solutions will be larger than solutions used by EA. We use this function
+//to sort and select the best solutions from initial solutions and form those used for EA.
 void MatchfromIniSolutionsToEASolutions(double *temparray)
 {
 	extern Solution solution;
@@ -105,7 +114,7 @@ void MatchfromIniSolutionsToEASolutions(double *temparray)
 	//	cout<<temparrayY[i]<<" ";
 	//}
 	//cout<<endl;
-	sort(temparrayY,temparrayY+solution.IniNP);
+	sort(temparrayY,temparrayY+solution.IniNP);//sorting solutions
 	//for (int i=0;i<solution.IniNP;i++)
 	//{
 	//	cout<<temparrayY[i]<<" ";
@@ -136,6 +145,7 @@ void MatchfromIniSolutionsToEASolutions(double *temparray)
 	delete []tempCount;
 }
 
+//Random number generator
 void Initialization::Random()
 {
 	extern Solution solution;
@@ -168,6 +178,7 @@ void Initialization::Random()
 	delete []Y;
 }
 
+//Chaotic number generator
 void Initialization::Chaos()
 {
 	extern Solution solution;
@@ -227,6 +238,7 @@ void Initialization::Chaos()
 	delete []Y;
 }
 
+//Opposition based initialization
 void Initialization::Opposition()
 {
 	extern Solution solution;
@@ -293,6 +305,7 @@ void Initialization::Opposition()
 	delete []Y;
 }
 
+//Quasi opposition initialization (QOBL). Instead of fully oppositing, QOBL take a port of the opposite position.
 void Initialization::QuasiOpposition()
 {
 	extern Solution solution;
@@ -381,6 +394,7 @@ void Initialization::QuasiOpposition()
 	delete []Y;
 }
 
+//Quasi interpolation. Utilizing a simple parabola model to find better initial solutions
 void Initialization::QuasiInterpolation()
 {
 	extern Solution solution;
@@ -544,6 +558,7 @@ void Initialization::QuasiInterpolation()
 	delete []Ycount;
 }
 
+//Sobol sequence, aimming to generate evenly distributed initial solutions
 void Initialization::Sobol()
 {
 	extern Solution solution;
@@ -673,6 +688,7 @@ void Initialization::Sobol()
   delete []POINTS;
 }
 
+//general function, reads the selection and calls the corresponding initialization function
 void Initialization::Initial()
 {
 	extern Solution solution;
