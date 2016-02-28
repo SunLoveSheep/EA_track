@@ -1,3 +1,7 @@
+/*
+This .cpp file contains functions that initiate variables & arrays used for recording convergence data from the optimization process.
+*/
+
 #include "solution.h"
 #include "FEoutput.h"
 #include <iostream>
@@ -49,6 +53,7 @@ void FEoutput::Release()
 	delete []ConvergenceFirst10;
 }
 
+//given the current FE, update the best ever solution. Both its objective value and variable values
 void FEoutput::UpdateBest(int FE)
 {
 	extern Solution solution;
@@ -106,6 +111,7 @@ void FEoutput::UpdateBest(int FE)
 	
 }*/
 
+//record the convergence for each loop
 void FEoutput::Output(int FE)
 {
 	extern Solution solution;
@@ -136,6 +142,7 @@ void FEoutput::Output(int FE)
 	}
 }
 
+//record the best and worst optimal result from all performed loops
 void FEoutput::Loopsort()
 {	
 	extern Solution solution;
@@ -158,6 +165,7 @@ void FEoutput::Loopsort()
 	Loopworst=max;	
 }
 
+//given the cumulated optimization results from each loop, calculate the mean and std
 void FEoutput::Loopmeanstd()
 {
 	extern Solution solution;
