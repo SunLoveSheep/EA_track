@@ -26,7 +26,8 @@ void Algorithm::Optimization(int loop)
 	DE de;
 	CRO cro;
 	PSO pso;
-
+	
+	//take solution.Algorithm to decide which case (algorith) to use. 1 for DE, 2 for CRO, and 3 for PSO
 	switch(solution.Algorithm)
 	{
 	case 1:
