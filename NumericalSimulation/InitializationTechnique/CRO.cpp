@@ -25,6 +25,7 @@ CRO::~CRO()
 	//delete []CROp.MinHit;
 }
 
+//initial CRO parameter values
 void CRO::CROpInitialization()
 {
 	extern Solution solution;
@@ -44,6 +45,7 @@ void CRO::CROpInitialization()
 	}
 }
 
+//use to generate a gaussian noise which is used to find neighbor solutions for CRO
 void CRO::Gaussneighbor(double *In, double *Out)
 {
 	extern Solution solution;
@@ -58,6 +60,7 @@ void CRO::Gaussneighbor(double *In, double *Out)
 	constrainthandle.Handleconstaint(Out);
 }
 
+//use to combine two molecules into one
 void CRO::Synthesisneighbor(double *Out, double *X1, double *X2)
 {
 	extern Solution solution;
@@ -82,6 +85,7 @@ void CRO::Synthesisneighbor(double *Out, double *X1, double *X2)
 	constrainthandle.Handleconstaint(Out);
 }
 
+//CRO onwall operator
 void CRO::CROonwall(double *X, int *M)
 {
 	extern Solution solution;
@@ -130,6 +134,7 @@ void CRO::CROonwall(double *X, int *M)
 	delete []temp;
 }
 
+//CRO decomposition operator
 void CRO::CROdecomposition(double *X, int *M, bool *J)
 {
 	if (CROp.NumHit[M[0]]-CROp.MinHit[M[0]]<=CROp.Alpha)
@@ -252,6 +257,7 @@ void CRO::CROdecomposition(double *X, int *M, bool *J)
 	delete []temp2;
 }
 
+//CRO intermolecular collision operator
 void CRO::CROintermolecularcollision(double *X1, double *X2, int *M)
 {
 	extern Solution solution;
@@ -314,6 +320,7 @@ void CRO::CROintermolecularcollision(double *X1, double *X2, int *M)
 	delete []temp2;
 }
 
+//CRO synthesis
 void CRO::CROsynthesis(double *X1, double *X2, int *M, bool *J)
 {
 	if ((KE[M[0]]>=CROp.Beta)||(KE[M[1]]>=CROp.Beta))
@@ -383,6 +390,7 @@ void CRO::CROsynthesis(double *X1, double *X2, int *M, bool *J)
 	delete []temp;
 }
 
+//CRO main process
 void CRO::CROprocess(int loop)
 {
 	extern Solution solution;
@@ -391,21 +399,25 @@ void CRO::CROprocess(int loop)
 	FEoutput feoutput;
 	cec14_eotp CEC14;
 	BBOB09 bbob09;
-
+	
+	//intial bestever and convergence arrays by calling feoutput.Initial() function
 	feoutput.Initial();
+	//Update objective function values for solution candidates by calling SOperator.UpdateY()
 	SOperator.UpdateY();
 	double min=1000000000000000000;
 	for (int i=0;i<solution.EANP;i++)
 	{
 		if (solution.Y[i]<min)
 		{
+			//find the best solution among the current population
 			min=solution.Y[i];
 		}
 	}
+	
+	//initialize CRO parameters and some temporary storage arrays
 	CROpInitialization();
 	CROp.InitialKE=min/4;
 	CROp.Beta=CROp.InitialKE/20;
-
 	double *X1=new double[solution.D];//to temporarily store one molecule
 	double *X2=new double[solution.D];//to temporarily store one molecule
 	KE=new double[solution.Pdouble];
@@ -416,6 +428,7 @@ void CRO::CROprocess(int loop)
 	bool *J=new bool[1];//to check if a Decom or Synth has happened. J=1 means happened, J=0 means not happened
 	J[0]=0;
 	
+	//Set how neighbor search step size will change during the optimization process adaptively and non-adaptively
 	CROsigmaAdaptive=0.1*(solution.Max[0]-solution.Min[0]);
 	CROsigmaNonAdaptive=0.05*(solution.Max[0]-solution.Min[0]);
 	if (solution.AdaptiveFlag=1)
@@ -455,7 +468,7 @@ void CRO::CROprocess(int loop)
 	Intercounter=0;
 	Syncounter=0;
 
-	do 
+	do //main CRO process
 	{
 		if (solution.AdaptiveFlag==1)
 		{
