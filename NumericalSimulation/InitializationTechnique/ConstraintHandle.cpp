@@ -1,3 +1,7 @@
+/*
+This .cpp file contains functions that are used to handle constraint violations
+*/
+
 #include "ConstraintHandle.h"
 #include "solution.h"
 
@@ -11,6 +15,7 @@ ConstraintHandle::~ConstraintHandle()
 
 }
 
+//In case of violation, directly set the value equal to the bound
 void ConstraintHandle::Equaltobound(double *X)
 {
 	extern Solution solution;
@@ -29,6 +34,8 @@ void ConstraintHandle::Equaltobound(double *X)
 
 }
 
+
+//In case of violation, "bounce back" into the feasible region
 void ConstraintHandle::Bounceback(double *X)
 {
 	extern Solution solution;
@@ -46,6 +53,7 @@ void ConstraintHandle::Bounceback(double *X)
 	}
 }
 
+//according to the Constraint Handle strategy selection, calling different functions
 void ConstraintHandle::Handleconstaint(double *X)
 {
 	extern Solution solution;
