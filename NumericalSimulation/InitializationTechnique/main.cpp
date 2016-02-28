@@ -10,114 +10,14 @@
 #include "Algorithm.h"
 #include "FEoutput.h"
 #include "cec14_eotp.h"
+#include "cec13.h"
+#include "cec14.h"
 #include "bbob09functions.h"
 #include "bbob09supportfunctions.h"
 //#include <vld.h>
 
 using std::string;
 using namespace std;
-
-//Best P data from DE OBL D30 run200
-static int BestP_DE[24][8]={10,12,11,12,13,14,14,16,
-						10,11,13,13,14,13,14,16,
-						11,9,10,10,10,12,13,15,
-						9,10,10,11,11,12,13,15,
-						8,8,9,10,9,9,10,10,
-						9,11,11,12,12,12,13,13,
-						9,11,11,12,15,15,16,18,
-						11,12,12,12,14,15,17,17,
-						8,10,11,12,14,13,14,15,
-						7,8,9,10,10,11,12,13,
-						6,6,8,7,8,9,8,10,
-						10,11,12,12,14,13,14,16,
-						10,10,11,12,14,15,15,15,
-						9,11,12,13,13,14,14,15,
-						11,12,13,14,15,16,10,10,
-						5,5,5,5,5,5,5,5,
-						9,11,12,14,13,15,17,17,
-						9,11,12,13,12,14,15,15,
-						8,10,11,9,11,10,12,12,
-						10,13,13,15,14,18,14,14,
-						8,11,12,12,15,16,19,17,
-						9,12,13,14,11,15,19,28,
-						22,23,18,43,21,26,31,17,
-						9,11,12,13,13,13,13,14
-						};
-static int BestP_DE_RNG[24][6]={10,11,12,13,14,15,
-						11,12,12,14,15,13,
-						10,12,10,10,11,12,
-						9,10,11,11,11,12,
-						8,8,9,9,9,10,
-						9,10,12,12,12,13,
-						9,11,12,13,14,15,
-						11,12,13,14,14,14,
-						9,10,12,12,13,13,
-						8,9,9,10,11,11,
-						6,7,7,8,9,9,
-						10,11,12,13,13,14,
-						10,12,12,13,14,14,
-						10,11,12,13,13,15,
-						10,12,14,15,16,16,
-						5,5,5,5,5,5,
-						10,11,12,13,14,15,
-						9,10,11,12,13,15,
-						9,10,10,10,11,11,
-						11,13,14,16,17,20,
-						9,11,11,13,13,14,
-						9,11,13,12,15,15,
-						17,42,44,25,36,41,
-						10,11,12,13,14,13,
-						};
-static int BestP_CRO[24][8]={1,3,1,3,3,5,3,3,
-							1,1,1,1,2,2,4,2,
-							1,1,2,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,2,1,2,3,2,
-							1,1,1,1,2,1,3,2,
-							1,1,1,1,1,1,1,2,
-							1,1,1,1,1,1,1,1,
-							30,27,35,9,5,11,10,25,
-							1,1,1,1,1,1,2,1,
-							8,17,26,40,28,28,30,31,
-							1,1,3,1,1,4,6,17,
-							1,1,3,1,2,4,1,5,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							15,15,19,31,14,40,37,40,
-							1,1,2,2,2,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							1,1,1,1,1,1,1,1,
-							14,30,26,6,1,1,2,1
-							};
-static int BestP_CRO_RNG[24][6]={1,1,1,2,2,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,3,1,2,
-							16,31,43,7,7,7,
-							1,1,1,1,1,1,
-							9,18,31,42,29,48,
-							1,1,2,1,3,1,
-							1,1,1,1,2,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							1,1,1,1,1,1,
-							7,7,10,16,40,35,
-							1,1,1,1,1,1,
-							2,4,2,6,16,13,
-							1,1,1,2,2,2,
-							1,1,1,1,1,1,
-							8,13,11,1,1,1
-							};
 
 int main()
 {
@@ -130,6 +30,8 @@ int main()
 	FEoutput feoutput;
 	SolutionOperator SOperator;
 	cec14_eotp CEC14;
+	cec13 CEC13;
+	cec14 CEC14_normal;
 	BBOB09 bbob09;
 	BBOB09support bbob09support;
 
@@ -150,19 +52,19 @@ int main()
 	//note if DE is used, P=5*N is suggested, revised inside function loop
 	solution.TargetBest=0;
 	solution.Error=0.00000001;
-	solution.Looptime=1000;
+	solution.Looptime=10;
 	
 	solution.trialID=1;
-	int StartFunction=1;//the first function that will be tested
-	int MaxFunctionTested=24;//how many function is not being tested, 1 stands for 1 function.
+	int StartFunction=3;//the first function that will be tested
+	int MaxFunctionTested=1;//how many function is not being tested, 1 stands for 1 function.
 	//Control variables: solution.D, MaxFE/D, RA
 	solution.D=30;
 	int IfUseBestP = 0;//if to use data in 2-D Array BestP, 0 is not to use, 1 is to use.
-	int FixedEANPsize = 5;
+	int FixedEANPsize = 10;
 	bbob09.BBOBparameterInitial();
 
-	solution.CECorBBOB=1;//select which benchmark to use
-	//0 for CEC14 expensive, 1 for BBOB09
+	solution.CECorBBOB=3;//select which benchmark to use
+	//0 for CEC14 expensive, 1 for BBOB09, 2 for CEC13, 3 for CEC14
 	int RAorP=0;//select whether to use P or RA as x-axis
 	//0 for P
 	//1 for RA
@@ -179,11 +81,11 @@ int main()
 		Pini_control=1;
 	}
 	//int Pstep_control=1;
-	int Pstep_control=3;//for 10,000 FE/D test
+	int Pstep_control=5;//for 10,000 FE/D test
 	double RAini_control=0.01;//RA from 1% - 30%, while P>=1;
 	double RAstep_control=0.005;//incremental of RA
 	int MaxRAcount=50;//maximum number of RA tested
-	int MaxPcount=50;
+	int MaxPcount=100;
 	int RAcount=0;
 	int Pcount=0;
 	solution.CRODecomS = 5;
@@ -196,7 +98,9 @@ int main()
 	//simulation information:
 	cout<<"Technique: "<<solution.Tech_num<<endl;
 	cout<<"Algorithm: "<<solution.Algorithm<<endl;
+	cout<<"Function set: "<<solution.CECorBBOB<<endl;
 	cout<<"Function tested: "<<StartFunction<<"-"<<StartFunction+MaxFunctionTested-1<<endl;
+	cout<<"Loop time: "<<solution.Looptime<<endl;
 	cout<<"BestP? "<<IfUseBestP;
 	if (IfUseBestP==0)
 		cout<<" Fixed NP: "<<FixedEANPsize<<endl;
@@ -214,25 +118,7 @@ int main()
 	for (int i=0;i<24;i++)
 	{
 		BestP[i] = new int[MaxFEperDcount];
-		/*int firstj=0;
-		if (FEarray[0]==25)
-			firstj=0;
-		else if (FEarray[0]==50)
-			firstj=1;
-		else if (FEarray[0]==75)
-			firstj=2;
-		else if (FEarray[0]==100)
-			firstj=3;
-		else if (FEarray[0]==150)
-			firstj=4;
-		else if (FEarray[0]==200)
-			firstj=5;
-		else if (FEarray[0]==300)
-			firstj=6;
-		else if (FEarray[0]==500)
-			firstj=7;*/
-
-		//for (int j=firstj;j<MaxFEperDcount;j++)
+		
 		for (int j=0;j<MaxFEperDcount;j++)
 		{
 			switch (solution.Algorithm)
@@ -240,18 +126,22 @@ int main()
 				case 1://using DE
 					if (solution.Tech_num==3)
 						//BestP[i][j-firstj] = BestP_DE[i][j];
-						BestP[i][j] = BestP_DE[i][j];
+						//BestP[i][j] = BestP_DE[i][j];
+						BestP[i][j] = 0;
 					else if (solution.Tech_num==1)
 						//BestP[i][j-firstj] = BestP_DE_RNG[i][j];
-						BestP[i][j] = BestP_DE_RNG[i][j];
+						//BestP[i][j] = BestP_DE_RNG[i][j];
+						BestP[i][j] = 0;
 					break;
 				case 2://using CRO
 					if (solution.Tech_num==3)
 						//BestP[i][j-firstj] = BestP_CRO[i][j];
-						BestP[i][j] = BestP_CRO[i][j];
+						//BestP[i][j] = BestP_CRO[i][j];
+						BestP[i][j] = 0;
 					else if (solution.Tech_num==1)
 						//BestP[i][j-firstj] = BestP_CRO_RNG[i][j];
-						BestP[i][j] = BestP_CRO_RNG[i][j];
+						//BestP[i][j] = BestP_CRO_RNG[i][j];
+						BestP[i][j] = 00;
 					break;
 				case 3://using PSO
 					//BestP[i][j] = BestP_PSO[i][j];
@@ -331,10 +221,10 @@ int main()
 	else
 		MaxCount=MaxRAcount;
 
-	LARGE_INTEGER Frequency;//è®¡æ•°å™¨é¢‘çŽ‡  
-	LARGE_INTEGER start_PerformanceCount;//èµ·å§‹è®¡æ•°å™¨  
-	LARGE_INTEGER end_PerformanceCount;//ç»“æŸè®¡æ•°å™¨ 
-	double run_time=0; //è¿è¡Œæ—¶é—´  
+	LARGE_INTEGER Frequency;//¼ÆÊýÆ÷ÆµÂÊ  
+	LARGE_INTEGER start_PerformanceCount;//ÆðÊ¼¼ÆÊýÆ÷  
+	LARGE_INTEGER end_PerformanceCount;//½áÊø¼ÆÊýÆ÷ 
+	double run_time=0; //ÔËÐÐÊ±¼ä  
 	QueryPerformanceFrequency(&Frequency);
 	QueryPerformanceCounter(&start_PerformanceCount);
 	int FunctionCount=0;
@@ -359,11 +249,20 @@ int main()
 				solution.Func_num=StartFunction*3;
 			}
 		}
-		else
+		else if (solution.CECorBBOB==1)
+		{
+			solution.Func_num=StartFunction+FunctionCount;
+			bbob09.CalculateParameter(solution.Func_num);
+		}
+		else if (solution.CECorBBOB==2)
 		{
 			solution.Func_num=StartFunction+FunctionCount;
 		}
-		bbob09.CalculateParameter(solution.Func_num);
+		else if (solution.CECorBBOB==3)
+		{
+			solution.Func_num=StartFunction+FunctionCount;
+		}
+		
 		if (solution.CECorBBOB==0)//initial setting for CEC14
 		{
 			//FileIO, read the M rotation matrix and o shift vector information
@@ -395,12 +294,30 @@ int main()
 				}
 			}
 		}
-		else //initial setting for BBOB09
+		else if (solution.CECorBBOB==1) //initial setting for BBOB09
 		{
 			for (int n=0;n<solution.D;n++)
 			{
 				solution.Min[n]=-5;
 				solution.Max[n]=5;
+			}
+		}
+		else if (solution.CECorBBOB==2) //initial setting for CEC13
+		{
+			CEC13.FileIO(solution.D,solution.Func_num);
+			for (int n=0;n<solution.D;n++)
+			{
+				solution.Min[n]=-100;
+				solution.Max[n]=100;
+			}
+		}
+		else if (solution.CECorBBOB==3) //initial setting for CEC13
+		{
+			CEC14_normal.FileIO(solution.D,solution.Func_num);
+			for (int n=0;n<solution.D;n++)
+			{
+				solution.Min[n]=-100;
+				solution.Max[n]=100;
 			}
 		}
 		fecount=0;
@@ -828,7 +745,7 @@ int main()
 	}
 	FILE* finalfout;
 	char FinalFileName[100];
-	sprintf_s(FinalFileName,"ResultOutput_SumData//A%d_Tech%d_%d_F%d-%d_D%d_Mean_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni,IfUseBestP);
+	sprintf_s(FinalFileName,"ResultOutput_SumData//A%d_Tech%d_Functions%d_%d_F%d-%d_D%d_Mean_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,solution.CECorBBOB,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni,IfUseBestP);
 	fstream finalfoutclear(FinalFileName,ios::out);
 	finalfoutclear.close();
 	errno_t err=fopen_s(&finalfout,FinalFileName,"a+");
@@ -883,7 +800,7 @@ int main()
 					fprintf(finalfout,"\nRA,BestP with not fixed NP,");
 				for (int ra=0;ra<MaxCount;ra++)
 				{
-					fprintf(finalfout,"%d,",BestP[StartFunction+i-1][k]+ra);
+					fprintf(finalfout,"%d,",BestP[StartFunction+i-1][k]+(ra*Pstep_control));
 					//fout2<<Pvalue[ra]<<",";
 				}
 				fprintf(finalfout,"\nF%d %dFE/D Mean result,%d,",StartFunction+i,FEarray[k],BestP[StartFunction+i-1][k]);
@@ -930,7 +847,7 @@ int main()
 	//Std result output:
 	FILE* finalfout1;
 	char FinalFileName1[100];
-	sprintf_s(FinalFileName1,"ResultOutput_SumData//A%d_Tech%d_%d_F%d-%d_D%d_Std_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni, IfUseBestP);
+	sprintf_s(FinalFileName1,"ResultOutput_SumData//A%d_Tech%d_Functions%d_%d_F%d-%d_D%d_Std_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,solution.CECorBBOB,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni, IfUseBestP);
 	fstream finalfout1clear(FinalFileName1,ios::out);
 	finalfout1clear.close();
 	errno_t err1=fopen_s(&finalfout1,FinalFileName1,"a+");
@@ -985,7 +902,7 @@ int main()
 					fprintf(finalfout1,"\nRA,BestP with not fixed NP,");
 				for (int ra=0;ra<MaxCount;ra++)
 				{
-					fprintf(finalfout1,"%d,",BestP[StartFunction+i-1][k]+ra);
+					fprintf(finalfout1,"%d,",BestP[StartFunction+i-1][k]+(ra*Pstep_control));
 					//fout2<<Pvalue[ra]<<",";
 				}
 				fprintf(finalfout1,"\nF%d %dFE/D Mean result,%d,",StartFunction+i,FEarray[k],BestP[StartFunction+i-1][k]);
@@ -1039,7 +956,7 @@ int main()
 	//Best Ini Record output
 	FILE* finalfout_ini;
 	char FinalFileName_ini[100];
-	sprintf_s(FinalFileName_ini,"ResultOutput_SumData//A%d_Tech%d_%d_F%d-%d_D%d_BestIni_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni,IfUseBestP);
+	sprintf_s(FinalFileName_ini,"ResultOutput_SumData//A%d_Tech%d_Functions%d_%d_F%d-%d_D%d_BestIni_Runs%d_FreeIni%d_BestP%d.csv",solution.Algorithm,solution.Tech_num,solution.CECorBBOB,RAorP,StartFunction,StartFunction+MaxFunctionTested-1,solution.D,solution.Looptime, FreeIni,IfUseBestP);
 	fstream finalfout_iniclear(FinalFileName_ini,ios::out);
 	finalfout_iniclear.close();
 	errno_t err_ini=fopen_s(&finalfout_ini,FinalFileName_ini,"a+");
@@ -1094,7 +1011,7 @@ int main()
 					fprintf(finalfout_ini,"\nRA,BestP with not fixed NP,");
 				for (int ra=0;ra<MaxCount;ra++)
 				{
-					fprintf(finalfout_ini,"%d,",BestP[StartFunction+i-1][k]+ra);
+					fprintf(finalfout_ini,"%d,",BestP[StartFunction+i-1][k]+(ra*Pstep_control));
 					//fout2<<Pvalue[ra]<<",";
 				}
 				fprintf(finalfout_ini,"\nF%d %dFE/D Mean result,%d,",StartFunction+i,FEarray[k],BestP[StartFunction+i-1][k]);
