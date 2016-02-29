@@ -1,3 +1,8 @@
+/*
+This .cpp file contains functions to calculate BBOB'09 benchmark problems and a general process functions to deal the requirements from
+other .cpp of calculating.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -1970,6 +1975,7 @@ void BBOB09::CalculateParameter(int no)
 	}
 }
 
+//general process function. Will call correspondent function according to solution.Func_num. Result will be returned in a double variable
 double BBOB09::FunctionCalculation(double * x, int no) 
 {
 	double ret=0;
