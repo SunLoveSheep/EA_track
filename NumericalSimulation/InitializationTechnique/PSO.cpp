@@ -1,3 +1,7 @@
+/*
+This .cpp file contains functions that realize Particle Swarm Optimization.
+*/
+
 #include "PSO.h"
 #include "solution.h"
 #include "ConstraintHandle.h"
@@ -16,7 +20,8 @@ PSOparameter PSOp;
 PSO::PSO()
 {
 	extern Solution solution;
-
+	
+	//initial PSO system parameters
 	PSOp.c1=2;
 	PSOp.c2=2;
 	PSOp.w=0.8;
@@ -29,6 +34,7 @@ PSO::~PSO()
 	
 }
 
+//initiate global, local best solutions and particle velocities
 void PSO::Initial()
 {
 	extern Solution solution;
@@ -61,6 +67,7 @@ void PSO::Initial()
 	}
 }
 
+//update the particle positions and velocities according to PSO laws
 void PSO::PSOparticleupdate()
 {
 	extern Solution solution;
@@ -132,6 +139,7 @@ void PSO::PSOparticleupdate()
 	delete []vtemp;
 }
 
+//update local best after each iteration
 void PSO::PSOpbestupdate()
 {
 	extern Solution solution;
@@ -148,6 +156,7 @@ void PSO::PSOpbestupdate()
 	}
 }
 
+//update global best after each iteration 
 void PSO::PSOgbestupdate()
 {
 	extern Solution solution;
@@ -166,6 +175,7 @@ void PSO::PSOgbestupdate()
 	
 }
 
+//main process of PSO
 void PSO::PSOprocess(int loop)
 {
 	extern Solution solution;
@@ -174,7 +184,8 @@ void PSO::PSOprocess(int loop)
 	cec14_eotp CEC14;
 	
 	double bestever=1000000000;
-		
+	
+	//initiate some parameters and arrays	
 	FE=0;
 	SOperator.UpdateY();
 	feoutput.Initial();
@@ -192,7 +203,8 @@ void PSO::PSOprocess(int loop)
 	Initial();
 	PSOp.gbest=1000000000;
 	PSOp.w=3;
-
+	
+	//main loop to run PSO optimization until all FE are used.
 	do
 	{
 		PSOp.w=PSOp.w-PSOp.w*(double(FE)/double(solution.MaxFE));//less aggresive adaptation
