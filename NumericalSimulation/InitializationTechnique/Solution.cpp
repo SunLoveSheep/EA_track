@@ -1,3 +1,6 @@
+/*
+Given an array of control variables, this .cpp calculates the objective function value
+*/
 #include "solution.h"
 #include <iostream>
 #include "cec14_eotp.h"
@@ -19,6 +22,7 @@ SolutionOperator::~SolutionOperator()
 	
 }
 
+//Given an array with control variables and the objective function, calls the function calculation function and returns the objective value
 void SolutionOperator::UpdateY()
 {
 	cec14_eotp CEC14;
