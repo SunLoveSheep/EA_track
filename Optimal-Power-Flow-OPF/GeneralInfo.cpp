@@ -1,0 +1,9 @@
+//////////////////////////////////////////////////////////////
+/////////   定义计算中需要使用的全局变量                /////
+//////////////////////////////////////////////////////////////////////////
+
+#include "GeneralInfo.h"	
+    SystemInfo m_SystemInfo;   ///系统信息
+	LineInfo *m_LineInfo;       ///线路信息
+	TransformerInfo *m_TransformerInfo;  ///变压器支路 
+	BusInfo *m_BusInfo;        //// 节点
