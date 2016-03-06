@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////////
-//////      ´ÓÔ­Ê¼Êı¾İÎÄ¼ş¶ÁÈëÊı¾İ£¬²¢ÇÒ×öÁË¼òµ¥µÄ´¦Àí£¬±ÈÈçÍ³¼Æ½ÚµãÊıµÈ ////
+//////      Read input data from "è¾“å…¥æ•°æ®" (inside "InputData.rar")     ////
 /////                                                                    ////
 /////////////////////////////////////////////////////////////////////////////
 
@@ -18,19 +18,19 @@ CReadData::~CReadData()
 }
 void CReadData::Read(char *Filename)
 {
-	extern SystemInfo m_SystemInfo;   ///ÏµÍ³ĞÅÏ¢
-	extern LineInfo *m_LineInfo;       ///ÏßÂ·ĞÅÏ¢
-	extern TransformerInfo *m_TransformerInfo;  ///±äÑ¹Æ÷Ö§Â· 
-	extern BusInfo *m_BusInfo;        //// ½Úµã
-	/////ÒòÎªÃ¿×éÊı¾İµÄ³¤¶È²»ÖªµÀËùÒÔÊ¹ÓÃÈİÆ÷¶ÁÈ¡
+	extern SystemInfo m_SystemInfo;   ///ç³»ç»Ÿä¿¡æ¯
+	extern LineInfo *m_LineInfo;       ///çº¿è·¯ä¿¡æ¯
+	extern TransformerInfo *m_TransformerInfo;  ///å˜å‹å™¨æ”¯è·¯ 
+	extern BusInfo *m_BusInfo;        //// èŠ‚ç‚¹
+	/////å› ä¸ºæ¯ç»„æ•°æ®çš„é•¿åº¦ä¸çŸ¥é“æ‰€ä»¥ä½¿ç”¨å®¹å™¨è¯»å–
    vector<LineInfo> Line;
    vector<TransformerInfo> transformer;
    vector<BusInfo> generator;
    vector<BusInfo> load;
-   char End[20];   ///¶ÁÈë½áÊø±êÖ¾
+   char End[20];   ///è¯»å…¥ç»“æŸæ ‡å¿—
    datain.open(Filename);
    datain>>BusOptimType>>MaxIteraNum>>IteraError>>BasePower>>BaseVoltage;
-   while(1) ////¶ÁÈëÏßÂ·Êı¾İ
+   while(1) ////è¯»å…¥çº¿è·¯æ•°æ®
 	{ 
 	   LineInfo temp;
        datain>>End;
@@ -39,7 +39,7 @@ void CReadData::Read(char *Filename)
 	   datain>>temp.BusJNo>>temp.R>>temp.X>>temp.Yk;	  
 	   Line.push_back(temp);
 	}  
-	while(1)  ///¶ÁÈë±äÑ¹Æ÷Êı¾İ
+	while(1)  ///è¯»å…¥å˜å‹å™¨æ•°æ®
 	{
       TransformerInfo temp;
        datain>>End;
@@ -48,7 +48,7 @@ void CReadData::Read(char *Filename)
 	   datain>>temp.BusJNo>>temp.R>>temp.X>>temp.Ratio;
 	   transformer.push_back(temp);
 	}	
-   while(1)   ///¶ÁÈë·¢µç»ú½ÚµãÊı¾İ
+   while(1)   ///è¯»å…¥å‘ç”µæœºèŠ‚ç‚¹æ•°æ®
    {
       BusInfo temp;
 	  datain>>End;
@@ -57,7 +57,7 @@ void CReadData::Read(char *Filename)
 	   datain>>temp.BusType>>temp.PG>>temp.QG>>temp.Voltage_e;
 	   generator.push_back(temp);
    }
-   while(1)   ///¶ÁÈë¸ººÉ½ÚµãÊı¾İ
+   while(1)   ///è¯»å…¥è´Ÿè·èŠ‚ç‚¹æ•°æ®
    {
       BusInfo temp;
 	   datain>>End;
@@ -66,9 +66,9 @@ void CReadData::Read(char *Filename)
 	   datain>>temp.BusType>>temp.PD>>temp.QD>>temp.Voltage_e;
 	   load.push_back(temp);
    }
-   int m_num;   //Í³¼ÆÃ¿×éÊı¾İµÄ³¤¶È
-   ////´ÓÈİÆ÷ÖĞÊı¾İ
-   ////¶ÁÈëÏßÂ·Êı¾İ
+   int m_num;   //ç»Ÿè®¡æ¯ç»„æ•°æ®çš„é•¿åº¦
+   ////ä»å®¹å™¨ä¸­æ•°æ®
+   ////è¯»å…¥çº¿è·¯æ•°æ®
    m_num=Line.size()+RE;
    m_LineInfo=new LineInfo[m_num];
    m_SystemInfo.GeneralLineNum=0; m_SystemInfo.LandBranchNum=0;
@@ -82,7 +82,7 @@ void CReadData::Read(char *Filename)
 	   if(Line[i-1].BusINo==Line[i-1].BusJNo) m_SystemInfo.LandBranchNum+=1;
    }
    m_SystemInfo.GeneralLineNum=Line.size()-m_SystemInfo.LandBranchNum;
-   /////¶ÁÈë±äÑ¹Æ÷Êı¾İ
+   /////è¯»å…¥å˜å‹å™¨æ•°æ®
    m_num=transformer.size()+RE;
    m_TransformerInfo=new TransformerInfo[m_num];
    for(i=1;i<=transformer.size();i++)
@@ -94,8 +94,8 @@ void CReadData::Read(char *Filename)
 	   m_TransformerInfo[i].Ratio=transformer[i-1].Ratio;
    }
    m_SystemInfo.TransformerNum=transformer.size();
-   ////¶ÁÈë½ÚµãĞÅÏ¢
-   int busnum=0;/// ½ÚµãÊıÄ¿
+   ////è¯»å…¥èŠ‚ç‚¹ä¿¡æ¯
+   int busnum=0;/// èŠ‚ç‚¹æ•°ç›®
    for(i=0;i<generator.size();i++)
 	   if(generator[i].BusNo>busnum) busnum=generator[i].BusNo;	   
    for(i=0;i<load.size();i++)
