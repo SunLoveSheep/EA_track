@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////
-//////////////////   ³±Á÷¼ÆËãÖ÷³ÌĞò                /////////////////////
+//////////////////   main .cpp file. Optimization is coded here    /////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////
 #include <iostream>
 #include <String.h>
@@ -25,28 +25,28 @@ double Modulation(double V[], int a)
 	time_t startpf30,endpf30;
 	time(&start130);
 	char filename[20]="30.txt";
-	//cout<<"ÇëÊäÈëÒª¼ÆËãµÄÔ­Ê¼Êı¾İÎÄ¼şÃû(5½Úµã¶ÔÓ¦µÄÊÇ5.txt,ÒÀ´ÎÀàÍÆ)£º "<<endl;
+	//cout<<"è¯·è¾“å…¥è¦è®¡ç®—çš„åŸå§‹æ•°æ®æ–‡ä»¶å(5èŠ‚ç‚¹å¯¹åº”çš„æ˜¯5.txt,ä¾æ¬¡ç±»æ¨)ï¼š "<<endl;
 	//cin>>filename;
 
 	if(!strcmp(filename,"5.txt"))
 	{
-       strcpy(filename,"ÊäÈëÊı¾İ//5.txt");
+       strcpy(filename,"è¾“å…¥æ•°æ®//5.txt");
 	}
     else if(!strcmp(filename,"14.txt"))
 	{
-	    strcpy(filename,"ÊäÈëÊı¾İ//14.txt");
+	    strcpy(filename,"è¾“å…¥æ•°æ®//14.txt");
 	}
 	else if(!strcmp(filename,"30.txt"))
 	{
-		strcpy(filename,"ÊäÈëÊı¾İ//30.txt");
+		strcpy(filename,"è¾“å…¥æ•°æ®//30.txt");
 	}
 	else if(!strcmp(filename,"57.txt"))
 	{
-		strcpy(filename,"ÊäÈëÊı¾İ//57.txt");
+		strcpy(filename,"è¾“å…¥æ•°æ®//57.txt");
 	}
 	else if(!strcmp(filename,"118.txt"))
 	{
-		strcpy(filename,"ÊäÈëÊı¾İ//118.txt");
+		strcpy(filename,"è¾“å…¥æ•°æ®//118.txt");
 	}
 	readdata.Read(filename);
 	NodeOptimize Nodeoptimize;
@@ -55,7 +55,7 @@ double Modulation(double V[], int a)
 	{
      Nodeoptimize.AdjustNodeNo();
 	}
-	 extern SystemInfo m_SystemInfo;   ///ÏµÍ³ĞÅÏ¢
+	 extern SystemInfo m_SystemInfo;   ///ç³»ç»Ÿä¿¡æ¯
 
 	 int *new_old=new int[m_SystemInfo.SystemTotalBusNum+RE];
      for(int i=1;i<=m_SystemInfo.SystemTotalBusNum;i++)
@@ -70,7 +70,7 @@ double Modulation(double V[], int a)
 //  jacobi.GetNonZeroNum();
 
 	extern BusInfo *m_BusInfo;
-	extern TransformerInfo *m_TransformerInfo;  ///±äÑ¹Æ÷Ö§Â·
+	extern TransformerInfo *m_TransformerInfo;  ///å˜å‹å™¨æ”¯è·¯
 	YMatrix Ymatrix;
 	Ymatrix.SpareYMatrix();
 
@@ -103,8 +103,8 @@ double Modulation(double V[], int a)
 	Ymatrix.DY[29].B=Ymatrix.DY[29].B+V[24];
 	
 	PowerFlow powerflow;
-	powerflow.MaxIteraNum=readdata.MaxIteraNum;   ///×î´óµü´úÊıÄ¿
-	powerflow.IteraError=readdata.IteraError; ///×î´óµü´úÎó²î
+	powerflow.MaxIteraNum=readdata.MaxIteraNum;   ///æœ€å¤§è¿­ä»£æ•°ç›®
+	powerflow.IteraError=readdata.IteraError; ///æœ€å¤§è¿­ä»£è¯¯å·®
 	time(&startpf30);
 	powerflow.PFlow();
 	time(&endpf30);
@@ -993,8 +993,8 @@ int main()
 
 	extern 	BusInfo *m_BusInfo;
 	extern 	LineInfo *m_LineInfo;
-	double I_e[39];   ///µçÁ÷Êµ²¿ 
-    double I_f[39];   ///µçÁ÷Ğé²¿
+	double I_e[39];   ///ç”µæµå®éƒ¨ 
+    double I_f[39];   ///ç”µæµè™šéƒ¨
 	double I[39];
 	for(int k=1;k<=39;k++)
 	{
